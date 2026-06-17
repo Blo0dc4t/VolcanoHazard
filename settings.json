@@ -1,0 +1,37 @@
+{
+  "intensity": 1.0,
+  "weights": {
+    "Ashfall": 1.0,
+    "Lava Spur": 1.0,
+    "Bomb Shower": 1.0,
+    "Pyroclastic Surge": 1.0,
+    "Mudflow": 1.0,
+    "Radius Blast": 1.0
+  },
+  "hazard_attrs": {
+    "Ashfall": {
+      "damage": 60,
+      "spread": 1
+    },
+    "Lava Spur": {
+      "damage": 100,
+      "spread": 1
+    },
+    "Bomb Shower": {
+      "damage": 140,
+      "spread": 2
+    },
+    "Pyroclastic Surge": {
+      "damage": 180,
+      "spread": 2
+    },
+    "Mudflow": {
+      "damage": 120,
+      "spread": 4
+    },
+    "Radius Blast": {
+      "damage": 220,
+      "spread": 1
+    }
+  }
+}
