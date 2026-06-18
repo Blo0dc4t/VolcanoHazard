@@ -232,6 +232,9 @@ class Game:
         self.current_hazard: Hazard | None = None
         self.hazard_origin: tuple[int, int] | None = None
         self.hazard_direction: tuple[int, int] | None = None
+        self.revealed_hazard: Hazard | None = None
+        self.revealed_hazard_origin: tuple[int, int] | None = None
+        self.revealed_hazard_direction: tuple[int, int] | None = None
         self.hazard_expires_at = 0.0
         self.move_queue: list[Player] = []
         self.expansion = VolcanoExpansion() if VolcanoExpansion is not None else None
@@ -249,6 +252,7 @@ class Game:
         self.settings_content_height: int = 0
         self.editing_desc: tuple[str, str] | None = None
         self.pattern_dropdown: str | None = None
+        self.show_leaderboard: bool = True
         self.message = "Type a name and press Enter to join."
         self.message_until = time.time() + 9999
         self.island, self.outline = generate_island()
@@ -355,6 +359,9 @@ class Game:
         self.current_hazard = None
         self.hazard_origin = None
         self.hazard_direction = None
+        self.revealed_hazard = None
+        self.revealed_hazard_origin = None
+        self.revealed_hazard_direction = None
         self.hazard_expires_at = 0.0
         self.last_round_summary = ""
         self.island, self.outline = generate_island()
@@ -387,6 +394,9 @@ class Game:
         self.set_message(f"{self.players[0].name}, click a land square to place your house.", 2.5)
 
     def start_hazard_phase(self) -> None:
+        self.revealed_hazard = None
+        self.revealed_hazard_origin = None
+        self.revealed_hazard_direction = None
         # If the volcano expansion is present, reveal the main volcano on the first round
         if self.expansion and not self.volcano_revealed:
             # place the main volcano and show it as the first-event epicenter
@@ -431,6 +441,57 @@ class Game:
         self.set_message(f"Round {self.round_number}: {self.current_hazard.name} revealed.", 1.3)
         self.last_round_summary = ""
 
+    def hazard_display_state(self) -> tuple[Hazard | None, tuple[int, int] | None, tuple[int, int] | None]:
+        if self.state == "hazard":
+            return self.current_hazard, self.hazard_origin, self.hazard_direction
+        return self.revealed_hazard, self.revealed_hazard_origin, self.revealed_hazard_direction
+
+    def draw_hazard_cells(self, hazard: Hazard, origin: tuple[int, int], direction: tuple[int, int] | None) -> None:
+        styles = {
+            "Ashfall": ((170, 178, 186), (228, 234, 240), "dot"),
+            "Lava Spur": ((255, 137, 58), (255, 209, 96), "square"),
+            "Bomb Shower": ((255, 182, 68), (255, 102, 74), "cross"),
+            "Pyroclastic Surge": ((186, 85, 53), (242, 134, 77), "diamond"),
+            "Mudflow": ((145, 111, 73), (205, 167, 103), "line"),
+            "Radius Blast": ((231, 91, 66), (255, 170, 90), "ring"),
+            "Volcano": ((214, 93, 46), (120, 20, 10), "volcano"),
+        }
+        accent, glow, marker = styles.get(hazard.name, ((255, 120, 80), (255, 200, 150), "ring"))
+        for cell in hazard_cells(hazard, origin, direction):
+            rect = cell_rect(*cell).inflate(-10, -10)
+            overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
+            overlay.fill((*accent, 90))
+            self.screen.blit(overlay, rect.topleft)
+            pygame.draw.rect(self.screen, accent, rect, 2, border_radius=8)
+
+        center_rect = cell_rect(*origin).inflate(-16, -16)
+        center = center_rect.center
+        if marker == "dot":
+            pygame.draw.circle(self.screen, glow, center, max(6, center_rect.width // 6))
+            pygame.draw.circle(self.screen, accent, center, max(10, center_rect.width // 4), 2)
+        elif marker == "square":
+            pygame.draw.rect(self.screen, glow, center_rect.inflate(-10, -10), border_radius=6)
+            pygame.draw.rect(self.screen, accent, center_rect.inflate(-4, -4), 2, border_radius=6)
+        elif marker == "cross":
+            pygame.draw.line(self.screen, glow, (center[0] - 12, center[1]), (center[0] + 12, center[1]), 4)
+            pygame.draw.line(self.screen, glow, (center[0], center[1] - 12), (center[0], center[1] + 12), 4)
+            pygame.draw.circle(self.screen, accent, center, 14, 2)
+        elif marker == "diamond":
+            points = [(center[0], center[1] - 16), (center[0] - 16, center[1]), (center[0], center[1] + 16), (center[0] + 16, center[1])]
+            pygame.draw.polygon(self.screen, glow, points)
+            pygame.draw.polygon(self.screen, accent, points, 2)
+        elif marker == "line":
+            pygame.draw.line(self.screen, glow, (center[0] - 14, center[1]), (center[0] + 14, center[1]), 5)
+            pygame.draw.line(self.screen, accent, (center[0] - 18, center[1] - 7), (center[0] + 18, center[1] - 7), 2)
+            pygame.draw.line(self.screen, accent, (center[0] - 18, center[1] + 7), (center[0] + 18, center[1] + 7), 2)
+        elif marker == "volcano":
+            tri = [(center[0], center[1] - 16), (center[0] - 16, center[1] + 16), (center[0] + 16, center[1] + 16)]
+            pygame.draw.polygon(self.screen, glow, tri)
+            pygame.draw.polygon(self.screen, accent, tri, 2)
+        else:
+            pygame.draw.circle(self.screen, glow, center, 12)
+            pygame.draw.circle(self.screen, accent, center, 16, 2)
+
     def apply_hazard(self) -> None:
         if self.current_hazard is None or self.hazard_origin is None:
             return
@@ -460,6 +521,9 @@ class Game:
             self.last_round_summary = f"{self.current_hazard.name} hit: {', '.join(hit_names)} (-{self.current_hazard.damage})"
         else:
             self.last_round_summary = f"{self.current_hazard.name} landed, but no houses were hit."
+        self.revealed_hazard = self.current_hazard
+        self.revealed_hazard_origin = self.hazard_origin
+        self.revealed_hazard_direction = self.hazard_direction
         self.current_hazard = None
         self.hazard_origin = None
         self.hazard_direction = None
@@ -536,13 +600,9 @@ class Game:
                         pygame.draw.rect(self.screen, WATER if (col + row) % 2 else WATER_ALT, rect)
                     pygame.draw.rect(self.screen, GRID, rect, 1)
 
-        if self.state == "hazard" and self.current_hazard and self.hazard_origin:
-            for cell in hazard_cells(self.current_hazard, self.hazard_origin, self.hazard_direction):
-                rect = cell_rect(*cell).inflate(-10, -10)
-                overlay = pygame.Surface(rect.size, pygame.SRCALPHA)
-                overlay.fill((255, 90, 55, 110))
-                self.screen.blit(overlay, rect.topleft)
-                pygame.draw.rect(self.screen, BAD, rect, 3, border_radius=8)
+        hazard, origin, direction = self.hazard_display_state()
+        if hazard and origin:
+            self.draw_hazard_cells(hazard, origin, direction)
 
         if self.state == "move" and self.selected_move_cell is not None:
             pygame.draw.rect(self.screen, GOOD, cell_rect(*self.selected_move_cell).inflate(-10, -10), 3, border_radius=8)
@@ -609,13 +669,13 @@ class Game:
             hazard = self.current_hazard
             if hazard:
                 self.draw_text(f"Round {self.round_number}", "body", TEXT, (inner.x, inner.y + 82))
-                self.draw_text(hazard.name, "body", BAD, (inner.x, inner.y + 114))
-                self.draw_wrapped(hazard.description, pygame.Rect(inner.x, inner.y + 148, inner.width, 84), "small", MUTED)
-                self.draw_text(f"Damage: ${hazard.damage}", "body", ACCENT, (inner.x, inner.y + 242))
-                self.draw_text("Click a land square to reveal the hazard center.", "small", MUTED, (inner.x, inner.y + 272))
+                self.draw_text(hazard.name, "body", BAD, (inner.x, inner.y + 120))
+                self.draw_wrapped(hazard.description, pygame.Rect(inner.x, inner.y + 160, inner.width, 92), "small", MUTED)
+                self.draw_text(f"Damage: ${hazard.damage}", "body", ACCENT, (inner.x, inner.y + 160))
+                self.draw_text("Click a land square to reveal the hazard center.", "small", MUTED, (inner.x, inner.y + 192))
                 probs = getattr(self, "last_hazard_probs", None)
                 if probs:
-                    y = inner.y + 304
+                    y = inner.y + 230
                     self.draw_text("Selection probabilities:", "small", MUTED, (inner.x, y))
                     y += 18
                     for name, p in sorted(probs.items(), key=lambda kv: kv[1], reverse=True)[:6]:
@@ -635,10 +695,10 @@ class Game:
                 if self.selected_move_cell is not None and player.house is not None:
                     cost = manhattan(player.house, self.selected_move_cell) * MOVE_COST_PER_TILE
                     self.draw_text(f"Selected move cost: ${cost}", "body", ACCENT, (inner.x, inner.y + 242))
-                self.draw_text("Press S to skip your move.", "small", MUTED, (inner.x, inner.y + 272))
+                self.draw_text("Press S to skip your move.", "small", MUTED, (inner.x, inner.y + 222))
                 # Mitigation purchase buttons
                 buy_x = inner.x + 8
-                buy_y = inner.y + 312
+                buy_y = inner.y + 252
                 levee_rect = pygame.Rect(buy_x, buy_y, 168, 34)
                 ins_rect = pygame.Rect(buy_x, buy_y + 40, 168, 34)
                 pygame.draw.rect(self.screen, PANEL_ALT, levee_rect, border_radius=8)
@@ -653,8 +713,9 @@ class Game:
             self.draw_text(f"Winner: {winner or 'none'}", "body", GOOD if winner else BAD, (inner.x, inner.y + 114))
             self.draw_text("Press R to restart or L to toggle the leaderboard.", "small", MUTED, (inner.x, inner.y + 148))
 
-        self.draw_text("Players", "body", ACCENT, (inner.x, inner.y + 372))
-        y = inner.y + 404
+        # players section
+        self.draw_text("Players", "body", ACCENT, (inner.x, inner.y + 392))
+        y = inner.y + 424
         for player in self.players:
             status = "alive" if player.money > 0 else f"out at round {player.eliminated_round or self.round_number}"
             label = f"{player.name}: ${player.money} | {status}"
@@ -662,23 +723,26 @@ class Game:
             self.draw_text(label, "small", color, (inner.x, y))
             y += 22
 
-        leaderboard = load_leaderboard()
-        if leaderboard:
-            box = pygame.Rect(inner.x, inner.bottom - 185, inner.width, 170)
-            pygame.draw.rect(self.screen, PANEL_ALT, box, border_radius=12)
-            self.draw_text("Leaderboard", "body", ACCENT, (box.x + 12, box.y + 10))
-            top = sorted(leaderboard, key=lambda r: (r.get("survived_rounds", 0), r.get("final_money", 0)), reverse=True)[:6]
-            ly = box.y + 44
-            for record in top:
-                self.draw_text(
-                    f"{record.get('name', '?')} - {record.get('survived_rounds', 0)} rounds - ${record.get('final_money', 0)}",
-                    "tiny",
-                    TEXT,
-                    (box.x + 12, ly),
-                )
-                ly += 20
+        if self.show_leaderboard:
+            leaderboard = load_leaderboard()
+            if leaderboard:
+                box = pygame.Rect(inner.x, inner.bottom - 185, inner.width, 170)
+                pygame.draw.rect(self.screen, PANEL_ALT, box, border_radius=12)
+                self.draw_text("Leaderboard", "body", ACCENT, (box.x + 12, box.y + 10))
+                top = sorted(leaderboard, key=lambda r: (r.get("survived_rounds", 0), r.get("final_money", 0)), reverse=True)[:6]
+                ly = box.y + 44
+                for record in top:
+                    self.draw_text(
+                        f"{record.get('name', '?')} - {record.get('survived_rounds', 0)} rounds - ${record.get('final_money', 0)}",
+                        "tiny",
+                        TEXT,
+                        (box.x + 12, ly),
+                    )
+                    ly += 20
+        else:
+            self.draw_text("Press L to show the leaderboard.", "tiny", MUTED, (inner.x, inner.bottom - 170))
 
-        footer = pygame.Rect(inner.x, inner.bottom - 26, inner.width, 20)
+        footer = pygame.Rect(inner.x, inner.bottom - 16, inner.width, 20)
         self.draw_text("Hazards cost money if your house is on the hit pattern.", "tiny", MUTED, (footer.x, footer.y))
 
         # settings overlay
@@ -698,12 +762,14 @@ class Game:
                 pattern_rect = pygame.Rect(sbox.right - 260, y - 6, 96, 28)
                 cur_pattern = self.settings.get("hazard_attrs", {}).get(name, {}).get("pattern", next((h.pattern for h in HAZARDS if h.name == name), "square"))
                 pygame.draw.rect(self.screen, PANEL_ALT, pattern_rect)
+                self.draw_text("Pattern", "tiny", MUTED, (pattern_rect.x, pattern_rect.y - 14))
                 self.draw_text(cur_pattern, "tiny", TEXT, (pattern_rect.x + 6, pattern_rect.y + 6))
                 # weight +/-
                 w_rect = pygame.Rect(sbox.right - 160, y - 6, 36, 28)
                 p_rect = pygame.Rect(sbox.right - 112, y - 6, 36, 28)
                 pygame.draw.rect(self.screen, PANEL_ALT, w_rect)
                 pygame.draw.rect(self.screen, PANEL_ALT, p_rect)
+                self.draw_text("Weight", "tiny", MUTED, (w_rect.x - 8, w_rect.y - 14))
                 self.draw_text("-", "body", TEXT, (w_rect.x + 10, w_rect.y + 2))
                 self.draw_text("+", "body", TEXT, (p_rect.x + 10, p_rect.y + 2))
                 self.draw_text(f"{int(weight*100)}%", "small", MUTED, (sbox.right - 64, y))
@@ -713,12 +779,14 @@ class Game:
                 dmg_inc = pygame.Rect(sbox.right - 112, dmg_y - 6, 36, 28)
                 pygame.draw.rect(self.screen, PANEL_ALT, dmg_dec)
                 pygame.draw.rect(self.screen, PANEL_ALT, dmg_inc)
+                self.draw_text("Damage", "tiny", MUTED, (dmg_dec.x - 10, dmg_dec.y - 14))
                 # spread controls (next next line)
                 sp_y = y + 40
                 sp_dec = pygame.Rect(sbox.right - 160, sp_y - 6, 36, 28)
                 sp_inc = pygame.Rect(sbox.right - 112, sp_y - 6, 36, 28)
                 pygame.draw.rect(self.screen, PANEL_ALT, sp_dec)
                 pygame.draw.rect(self.screen, PANEL_ALT, sp_inc)
+                self.draw_text("Spread", "tiny", MUTED, (sp_dec.x - 10, sp_dec.y - 14))
                 # fetch current overridden attrs
                 attrs = self.settings.get("hazard_attrs", {}).get(name, {})
                 cur_dmg = attrs.get("damage", next((h.damage for h in HAZARDS if h.name == name), 0))
@@ -766,6 +834,7 @@ class Game:
             int_plus = pygame.Rect(sbox.right - 112, y - 6, 36, 28)
             pygame.draw.rect(self.screen, PANEL_ALT, int_minus)
             pygame.draw.rect(self.screen, PANEL_ALT, int_plus)
+            self.draw_text("Intensity", "tiny", MUTED, (int_minus.x - 14, int_minus.y - 14))
             self.draw_text("-", "body", TEXT, (int_minus.x + 10, int_minus.y + 2))
             self.draw_text("+", "body", TEXT, (int_plus.x + 10, int_plus.y + 2))
             self.draw_text(f"{self.settings['intensity']:.2f}x", "small", MUTED, (sbox.right - 64, y))
@@ -1031,6 +1100,9 @@ class Game:
         if event.key == pygame.K_o:
             self.show_settings = not self.show_settings
             return
+        if event.key == pygame.K_l and self.state != "lobby":
+            self.show_leaderboard = not self.show_leaderboard
+            return
         if self.state == "lobby":
             if event.key == pygame.K_BACKSPACE:
                 self.input_text = self.input_text[:-1]
@@ -1056,8 +1128,6 @@ class Game:
         elif self.state == "game_over":
             if event.key == pygame.K_r:
                 self.reset_game()
-            elif event.key == pygame.K_l:
-                self.leaderboard = load_leaderboard()
 
     def update(self) -> None:
         if self.state == "hazard" and time.time() >= self.hazard_expires_at:

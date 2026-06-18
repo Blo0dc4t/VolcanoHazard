@@ -27,7 +27,7 @@ Controls
 - O: open/close the Settings panel.
 - Mouse wheel: scroll the Settings panel when it's open.
 - R: restart after game over.
-- L: reload / toggle leaderboard in the panel.
+- L: toggle the leaderboard in the panel.
 
 Mitigations (buy during Move phase)
 

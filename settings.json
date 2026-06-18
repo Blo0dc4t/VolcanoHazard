@@ -11,27 +11,33 @@
   "hazard_attrs": {
     "Ashfall": {
       "damage": 60,
-      "spread": 1
+      "spread": 1,
+      "pattern": "square"
     },
     "Lava Spur": {
       "damage": 100,
-      "spread": 1
+      "spread": 1,
+      "pattern": "square"
     },
     "Bomb Shower": {
       "damage": 140,
-      "spread": 2
+      "spread": 2,
+      "pattern": "square"
     },
     "Pyroclastic Surge": {
       "damage": 180,
-      "spread": 2
+      "spread": 2,
+      "pattern": "square"
     },
     "Mudflow": {
       "damage": 120,
-      "spread": 4
+      "spread": 4,
+      "pattern": "square"
     },
     "Radius Blast": {
       "damage": 220,
-      "spread": 1
+      "spread": 1,
+      "pattern": "square"
     }
   }
 }
