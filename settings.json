@@ -12,32 +12,27 @@
     "Ashfall": {
       "damage": 60,
       "spread": 1,
-      "pattern": "square"
+      "pattern": "diamond"
     },
     "Lava Spur": {
       "damage": 100,
-      "spread": 1,
-      "pattern": "square"
+      "spread": 1
     },
     "Bomb Shower": {
       "damage": 140,
-      "spread": 2,
-      "pattern": "square"
+      "spread": 2
     },
     "Pyroclastic Surge": {
       "damage": 180,
-      "spread": 2,
-      "pattern": "square"
+      "spread": 2
     },
     "Mudflow": {
       "damage": 120,
-      "spread": 4,
-      "pattern": "square"
+      "spread": 4
     },
     "Radius Blast": {
       "damage": 220,
-      "spread": 1,
-      "pattern": "square"
+      "spread": 1
     }
   }
 }

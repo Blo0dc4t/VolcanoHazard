@@ -77,6 +77,8 @@ HAZARDS = [
     Hazard("Radius Blast", 220, "square", 1, "A heavy blast damages a 3x3 zone."),
 ]
 
+HAZARD_BY_NAME = {hazard.name: hazard for hazard in HAZARDS}
+
 
 def make_fonts() -> dict[str, pygame.font.Font]:
     return {
@@ -556,6 +558,102 @@ class Game:
             return self.move_queue[self.move_player_index]
         return None
 
+    def _hazard_template(self, name: str) -> Hazard | None:
+        return HAZARD_BY_NAME.get(name)
+
+    def _hazard_attr(self, hazard_name: str, key: str, fallback):
+        attrs = self.settings.get("hazard_attrs", {}).get(hazard_name, {})
+        if key in attrs:
+            return attrs[key]
+        template = self._hazard_template(hazard_name)
+        if template is not None:
+            return getattr(template, key, fallback)
+        return fallback
+
+    def _draw_stepper_controls(
+        self,
+        base_x: int,
+        base_y: int,
+        box_y_mod: int,
+        label: str,
+        value_text: str,
+        value_style: str,
+        label_offset_x: int,
+    ) -> tuple[pygame.Rect, pygame.Rect]:
+        dec_rect = pygame.Rect(base_x + label_offset_x, base_y + box_y_mod, 36, 28)
+        inc_rect = pygame.Rect(base_x + label_offset_x + dec_rect.width + 10, base_y + box_y_mod, 36, 28)
+        pygame.draw.rect(self.screen, PANEL_ALT, dec_rect)
+        pygame.draw.rect(self.screen, PANEL_ALT, inc_rect)
+        self.draw_text(label, "tiny", MUTED, (base_x, base_y))
+        self.draw_text("-", "body", TEXT, (dec_rect.x + 10, dec_rect.y + 2))
+        self.draw_text("+", "body", TEXT, (inc_rect.x + 10, inc_rect.y + 2))
+        self.draw_text(value_text, value_style, MUTED, (base_x + label_offset_x + dec_rect.width + inc_rect.width + 20, base_y))
+        return dec_rect, inc_rect
+
+    def _draw_settings_hazard_row(self, sbox: pygame.Rect, name: str, weight: float, y: int, patterns: list[str]) -> int:
+        template = self._hazard_template(name)
+        attrs = self.settings.get("hazard_attrs", {}).get(name, {})
+
+        self.draw_text(name, "small", TEXT, (sbox.x + 12, y))
+
+        self.settings_buttons[name] = {}
+
+        line_spacing = 30
+        attr_x = sbox.x + 20
+        attr_y = y + line_spacing
+        box_y_mod = -6
+
+        pattern_x = sbox.right - 260
+        self.draw_text("Pattern", "tiny", MUTED, (pattern_x, attr_y))
+        cur_pattern = attrs.get("pattern", template.pattern if template is not None else "square")
+        pattern_rect = pygame.Rect(pattern_x, attr_y + box_y_mod, 96, 28)
+        pygame.draw.rect(self.screen, PANEL_ALT, pattern_rect)
+        self.draw_text(cur_pattern, "tiny", TEXT, (pattern_rect.x + 6, pattern_rect.y + 6))
+
+        self.settings_buttons[name]["pattern"] = pattern_rect
+
+
+        for attr_key_name, name_text, var_text in [
+            ("wei", "Weight", f"{int(weight * 100)}%"),
+            ("dmg", "Damage", f"Dmg: {attrs.get('damage', template.damage if template is not None else 0)}"),
+            ("spr", "Spread", f"Spr: {attrs.get('spread', template.spread if template is not None else 0)}"),
+        ]:
+            dec_rect, inc_rect = self._draw_stepper_controls(
+                attr_x,
+                attr_y,
+                box_y_mod,
+                name_text,
+                var_text,
+                "tiny",
+                100,
+            )
+            self.settings_buttons[name][f"dec_{attr_key_name}"] = dec_rect
+            self.settings_buttons[name][f"inc_{attr_key_name}"] = inc_rect
+            attr_y += line_spacing
+
+        desc = attrs.get("description", template.description if template is not None else "")
+        desc_rect = pygame.Rect(sbox.x + 12, attr_y + 28, sbox.width - 36, 44)
+        self.draw_wrapped(desc, desc_rect, "tiny", MUTED)
+
+        edit_rect = pygame.Rect(sbox.right - 160, attr_y + 28, 80, 24)
+        pygame.draw.rect(self.screen, PANEL_ALT, edit_rect)
+        self.draw_text("Edit desc", "tiny", TEXT, (edit_rect.x + 8, edit_rect.y + 4))
+
+        self.settings_buttons[name]["edit_desc"] = edit_rect
+
+        if self.pattern_dropdown == name:
+            opt_rects = []
+            opt_y = pattern_rect.y + 34
+            for opt in patterns:
+                opt_rect = pygame.Rect(pattern_rect.x, opt_y, pattern_rect.width, 28)
+                pygame.draw.rect(self.screen, PANEL_ALT, opt_rect)
+                self.draw_text(opt, "tiny", TEXT, (opt_rect.x + 6, opt_rect.y + 6))
+                opt_rects.append(opt_rect)
+                opt_y += 30
+            self.settings_buttons[name]["pattern_opts"] = opt_rects
+
+        return edit_rect.bottom + 12
+
     def draw_text(self, text: str, font_name: str, color: tuple[int, int, int], pos: tuple[int, int]) -> None:
         surface = self.fonts[font_name].render(text, True, color)
         self.screen.blit(surface, pos)
@@ -644,7 +742,7 @@ class Game:
         if time.time() < self.message_until:
             self.draw_text(self.message, "body", TEXT, (inner.x, inner.y + 42))
         # controls
-        self.draw_text("Press O to open Settings", "tiny", MUTED, (inner.x + 260, inner.y + 42))
+        self.draw_text("Press O to toggle Settings", "tiny", MUTED, (inner.bottom + 100, inner.bottom - 10))
 
         if self.state == "lobby":
             self.draw_text("Lobby", "body", TEXT, (inner.x, inner.y + 82))
@@ -742,106 +840,29 @@ class Game:
         else:
             self.draw_text("Press L to show the leaderboard.", "tiny", MUTED, (inner.x, inner.bottom - 170))
 
-        footer = pygame.Rect(inner.x, inner.bottom - 16, inner.width, 20)
-        self.draw_text("Hazards cost money if your house is on the hit pattern.", "tiny", MUTED, (footer.x, footer.y))
-
         # settings overlay
         if self.show_settings:
             sbox = pygame.Rect(BOARD.x + 60, BOARD.y + 40, BOARD.width - 120, BOARD.height - 80)
             pygame.draw.rect(self.screen, PANEL_BG, sbox, border_radius=12)
             self.draw_text("Settings", "body", ACCENT, (sbox.x + 12, sbox.y + 8))
-            # enable clipping so content can scroll
             self.screen.set_clip(sbox)
             y = sbox.y + 44 - self.settings_scroll
             self.settings_buttons = {}
             patterns = ["square", "diamond", "cross", "line"]
             for name, weight in self.settings["weights"].items():
-                # hazard title
-                self.draw_text(f"{name}", "small", TEXT, (sbox.x + 12, y))
-                # pattern selector
-                pattern_rect = pygame.Rect(sbox.right - 260, y - 6, 96, 28)
-                cur_pattern = self.settings.get("hazard_attrs", {}).get(name, {}).get("pattern", next((h.pattern for h in HAZARDS if h.name == name), "square"))
-                pygame.draw.rect(self.screen, PANEL_ALT, pattern_rect)
-                self.draw_text("Pattern", "tiny", MUTED, (pattern_rect.x, pattern_rect.y - 14))
-                self.draw_text(cur_pattern, "tiny", TEXT, (pattern_rect.x + 6, pattern_rect.y + 6))
-                # weight +/-
-                w_rect = pygame.Rect(sbox.right - 160, y - 6, 36, 28)
-                p_rect = pygame.Rect(sbox.right - 112, y - 6, 36, 28)
-                pygame.draw.rect(self.screen, PANEL_ALT, w_rect)
-                pygame.draw.rect(self.screen, PANEL_ALT, p_rect)
-                self.draw_text("Weight", "tiny", MUTED, (w_rect.x - 8, w_rect.y - 14))
-                self.draw_text("-", "body", TEXT, (w_rect.x + 10, w_rect.y + 2))
-                self.draw_text("+", "body", TEXT, (p_rect.x + 10, p_rect.y + 2))
-                self.draw_text(f"{int(weight*100)}%", "small", MUTED, (sbox.right - 64, y))
-                # damage controls (next line)
-                dmg_y = y + 20
-                dmg_dec = pygame.Rect(sbox.right - 160, dmg_y - 6, 36, 28)
-                dmg_inc = pygame.Rect(sbox.right - 112, dmg_y - 6, 36, 28)
-                pygame.draw.rect(self.screen, PANEL_ALT, dmg_dec)
-                pygame.draw.rect(self.screen, PANEL_ALT, dmg_inc)
-                self.draw_text("Damage", "tiny", MUTED, (dmg_dec.x - 10, dmg_dec.y - 14))
-                # spread controls (next next line)
-                sp_y = y + 40
-                sp_dec = pygame.Rect(sbox.right - 160, sp_y - 6, 36, 28)
-                sp_inc = pygame.Rect(sbox.right - 112, sp_y - 6, 36, 28)
-                pygame.draw.rect(self.screen, PANEL_ALT, sp_dec)
-                pygame.draw.rect(self.screen, PANEL_ALT, sp_inc)
-                self.draw_text("Spread", "tiny", MUTED, (sp_dec.x - 10, sp_dec.y - 14))
-                # fetch current overridden attrs
-                attrs = self.settings.get("hazard_attrs", {}).get(name, {})
-                cur_dmg = attrs.get("damage", next((h.damage for h in HAZARDS if h.name == name), 0))
-                cur_sp = attrs.get("spread", next((h.spread for h in HAZARDS if h.name == name), 0))
-                self.draw_text("-", "body", TEXT, (dmg_dec.x + 10, dmg_dec.y + 2))
-                self.draw_text("+", "body", TEXT, (dmg_inc.x + 10, dmg_inc.y + 2))
-                self.draw_text(f"Dmg: {cur_dmg}", "tiny", MUTED, (sbox.right - 64, dmg_y))
-                self.draw_text("-", "body", TEXT, (sp_dec.x + 10, sp_dec.y + 2))
-                self.draw_text("+", "body", TEXT, (sp_inc.x + 10, sp_inc.y + 2))
-                self.draw_text(f"Spr: {cur_sp}", "tiny", MUTED, (sbox.right - 64, sp_y))
-                # description (click to edit)
-                desc = attrs.get("description", next((h.description for h in HAZARDS if h.name == name), ""))
-                desc_rect = pygame.Rect(sbox.x + 12, sp_y + 28, sbox.width - 36, 44)
-                self.draw_wrapped(desc, desc_rect, "tiny", MUTED)
-                edit_rect = pygame.Rect(sbox.right - 160, sp_y + 28, 80, 24)
-                pygame.draw.rect(self.screen, PANEL_ALT, edit_rect)
-                self.draw_text("Edit desc", "tiny", TEXT, (edit_rect.x + 8, edit_rect.y + 4))
-                # store rects (screen coords already include sbox.x/sbox.y offset and scroll)
-                self.settings_buttons[name] = {
-                    "pattern": pattern_rect,
-                    "dec": w_rect,
-                    "inc": p_rect,
-                    "dec_dmg": dmg_dec,
-                    "inc_dmg": dmg_inc,
-                    "dec_sp": sp_dec,
-                    "inc_sp": sp_inc,
-                    "edit_desc": edit_rect,
-                }
-                # if dropdown open for this hazard, draw options
-                if self.pattern_dropdown == name:
-                    opts = patterns
-                    opt_y = pattern_rect.y + 34
-                    opt_rects = []
-                    for opt in opts:
-                        orc = pygame.Rect(pattern_rect.x, opt_y, pattern_rect.width, 28)
-                        pygame.draw.rect(self.screen, PANEL_ALT, orc)
-                        self.draw_text(opt, "tiny", TEXT, (orc.x + 6, orc.y + 6))
-                        opt_rects.append(orc)
-                        opt_y += 30
-                    self.settings_buttons[name]["pattern_opts"] = opt_rects
-                y += 86
-            # intensity control
+                y = self._draw_settings_hazard_row(sbox, name, weight, y, patterns)
             self.draw_text("Intensity", "small", TEXT, (sbox.x + 12, y))
-            int_minus = pygame.Rect(sbox.right - 160, y - 6, 36, 28)
-            int_plus = pygame.Rect(sbox.right - 112, y - 6, 36, 28)
-            pygame.draw.rect(self.screen, PANEL_ALT, int_minus)
-            pygame.draw.rect(self.screen, PANEL_ALT, int_plus)
-            self.draw_text("Intensity", "tiny", MUTED, (int_minus.x - 14, int_minus.y - 14))
-            self.draw_text("-", "body", TEXT, (int_minus.x + 10, int_minus.y + 2))
-            self.draw_text("+", "body", TEXT, (int_plus.x + 10, int_plus.y + 2))
-            self.draw_text(f"{self.settings['intensity']:.2f}x", "small", MUTED, (sbox.right - 64, y))
-            self.settings_buttons["__intensity__"] = {"dec": int_minus, "inc": int_plus}
-            # finish clipping
+            int_minus, int_plus = self._draw_stepper_controls(
+                sbox.x + 12,
+                y,
+                -6,
+                "Intensity",
+                f"{self.settings['intensity']:.2f}x",
+                "small",
+                14,
+            )
+            self.settings_buttons["__intensity__"] = {"dec_wei": int_minus, "inc_wei": int_plus}
             self.screen.set_clip(None)
-            # record content height for scrolling
             self.settings_content_height = max(0, (y - (sbox.y + 44) + self.settings_scroll))
 
         # description editor modal
@@ -873,7 +894,7 @@ class Game:
         pygame.draw.rect(self.screen, PANEL_BG, box, border_radius=14)
         self.draw_text("How to play", "small", ACCENT, (box.x + 12, box.y + 10))
         self.draw_wrapped(
-            "Add 2-8 players, place houses on the island, then survive random volcanic hazards while paying to move away from danger.",
+            "Add 2-8 players, place houses on the island, then survive random volcanic hazards while paying to move away from danger or repair your house. \n",
             pygame.Rect(box.x + 12, box.y + 34, box.width - 24, 40),
             "tiny",
             MUTED,
@@ -969,14 +990,14 @@ class Game:
                             self.save_settings()
                             self.pattern_dropdown = None
                             return
-                if rects["dec"].collidepoint(pos):
+                if rects["dec_wei"].collidepoint(pos):
                     if name == "__intensity__":
                         self.settings["intensity"] = max(0.2, self.settings["intensity"] - 0.1)
                     else:
                         self.settings["weights"][name] = max(0.05, self.settings["weights"][name] - 0.05)
                     self.save_settings()
                     return
-                if rects["inc"].collidepoint(pos):
+                if rects["inc_wei"].collidepoint(pos):
                     if name == "__intensity__":
                         self.settings["intensity"] = min(3.0, self.settings["intensity"] + 0.1)
                     else:
