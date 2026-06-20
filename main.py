@@ -68,16 +68,8 @@ class Hazard:
     description: str
 
 
-HAZARDS = [
-    Hazard("Ashfall", 60, "diamond", 1, "Fine ash blankets a small diamond."),
-    Hazard("Lava Spur", 100, "square", 1, "A compact 3x3 lava burst."),
-    Hazard("Bomb Shower", 140, "cross", 2, "A cross-shaped shower of volcanic bombs."),
-    Hazard("Pyroclastic Surge", 180, "diamond", 2, "A hot surge spreads in a wider diamond."),
-    Hazard("Mudflow", 120, "line", 4, "A mudflow races in a straight line."),
-    Hazard("Radius Blast", 220, "square", 1, "A heavy blast damages a 3x3 zone."),
-]
-
-HAZARD_BY_NAME = {hazard.name: hazard for hazard in HAZARDS}
+# Hazards are loaded from `settings.json` at runtime and exposed on each Game
+# instance via `self.hazards` and `self.hazard_by_name`.
 
 
 def make_fonts() -> dict[str, pygame.font.Font]:
@@ -243,13 +235,12 @@ class Game:
         self.volcano_pos: tuple[int, int] | None = None
         self.volcano_revealed: bool = False
         self.show_settings: bool = False
-        # default settings: equal weights for each hazard and 1.0 intensity
-        base_weights = {h.name: 1.0 for h in HAZARDS}
-        hazard_attrs = {h.name: {"damage": h.damage, "spread": h.spread} for h in HAZARDS}
-        self.settings: dict = {"intensity": 1.0, "weights": base_weights, "hazard_attrs": hazard_attrs}
+        # default settings; actual hazards/weights are loaded from settings.json
+        self.settings: dict = {"intensity": 1.0}
         self.settings_buttons: dict = {}
         self.last_hazard_probs: dict | None = None
         self.load_settings()
+        self.normalize_settings()
         self.settings_scroll: int = 0
         self.settings_content_height: int = 0
         self.editing_desc: tuple[str, str] | None = None
@@ -267,15 +258,17 @@ class Game:
         cols = COLS
         land_cells = [(x, y) for y in range(rows) for x in range(cols) if self.island[y][x]]
         if not land_cells:
-            self.current_hazard = random.choice(HAZARDS)
+            if not getattr(self, "hazards", None):
+                raise RuntimeError("No hazards configured in settings.json")
+            self.current_hazard = random.choice(self.hazards)
             self.hazard_origin = (0, 0)
             self.hazard_direction = None
-            self.last_hazard_probs = {h.name: 1.0 / len(HAZARDS) for h in HAZARDS}
+            self.last_hazard_probs = {h.name: 1.0 / len(self.hazards) for h in self.hazards}
             return
 
         weights_map = {}
         totals = {}
-        for h in HAZARDS:
+        for h in self.hazards:
             name = h.name
             wlist = []
             tot = 0.0
@@ -303,7 +296,7 @@ class Game:
             totals[name] = tot
 
         total_all = sum(totals.values())
-        probs = {name: (totals[name] / total_all if total_all > 0 else 1.0 / len(HAZARDS)) for name in totals}
+        probs = {name: (totals[name] / total_all if total_all > 0 else 1.0 / len(self.hazards)) for name in totals}
         # sample hazard
         names = list(totals.keys())
         hazard_weights = [totals[n] for n in names]
@@ -318,7 +311,7 @@ class Game:
         else:
             epicenter = random.choices(land_cells, weights=cell_weights, k=1)[0]
         # map name to Hazard
-        for h in HAZARDS:
+        for h in self.hazards:
             if h.name == chosen:
                 # apply overrides
                 overrides = self.settings.get("hazard_attrs", {}).get(h.name, {})
@@ -329,7 +322,9 @@ class Game:
                 self.current_hazard = Hazard(h.name, dmg, pat, spr, desc)
                 break
         else:
-            h = random.choice(HAZARDS)
+            if not getattr(self, "hazards", None):
+                raise RuntimeError("No hazards configured in settings.json")
+            h = random.choice(self.hazards)
             overrides = self.settings.get("hazard_attrs", {}).get(h.name, {})
             dmg = int(overrides.get("damage", h.damage))
             spr = int(overrides.get("spread", h.spread))
@@ -375,11 +370,31 @@ class Game:
                 with SETTINGS_FILE.open("r", encoding="utf-8") as fh:
                     data = json.load(fh)
                     if isinstance(data, dict):
-                        # merge weights carefully
-                        if "weights" in data and isinstance(data["weights"], dict):
-                            self.settings["weights"].update(data["weights"])
-                        if "intensity" in data:
-                            self.settings["intensity"] = float(data["intensity"])
+                        # optional increments/bounds config
+                        if "increments_bounds" in data and isinstance(data["increments_bounds"], dict):
+                            self.settings["increments_bounds"] = data["increments_bounds"]
+
+                        # If file uses a single hazard_attrs section with per-hazard entries,
+                        # parse those and populate weights and hazard_attrs accordingly.
+                        if "hazard_attrs" in data and isinstance(data["hazard_attrs"], dict):
+                            for hname, props in data["hazard_attrs"].items():
+                                # per-hazard props may include weight/intensity/damage/spread/pattern/description
+                                if isinstance(props, dict):
+                                    # weight
+                                    w = props.get("weight")
+                                    if w is not None:
+                                        try:
+                                            self.settings.setdefault("weights", {})[hname] = float(w)
+                                        except Exception:
+                                            pass
+                                    # copy numeric/other attrs
+                                    entry = self.settings.setdefault("hazard_attrs", {}).setdefault(hname, {})
+                                    for key in ("damage", "spread", "pattern", "description"):
+                                        if key in props:
+                                            entry[key] = props.get(key)
+                        # Deprecated top-level 'weights'/'intensity' are no longer supported.
+                        # All hazard configuration should be provided under 'hazard_attrs',
+                        # and bounds/steps under 'increments_bounds'.
         except Exception:
             pass
 
@@ -389,6 +404,55 @@ class Game:
                 json.dump(self.settings, fh, indent=2)
         except Exception:
             pass
+
+    def normalize_settings(self) -> None:
+        # Ensure settings include entries for all known hazards and for any hazards present
+        # in the loaded settings file. Fill missing defaults from templates.
+        weights = self.settings.setdefault("weights", {})
+        hazard_attrs = self.settings.setdefault("hazard_attrs", {})
+
+        # Ensure a weight entry exists for every hazard defined in settings
+        for name in list(hazard_attrs.keys()):
+            weights.setdefault(name, 1.0)
+
+        # Fill missing attribute defaults and build runtime hazards list/mapping
+        hazards: list[Hazard] = []
+        hazard_by_name: dict[str, Hazard] = {}
+        for name, attrs in list(hazard_attrs.items()):
+            # ensure numeric defaults exist
+            dmg = int(attrs.get("damage", 0) or 0)
+            spr = int(attrs.get("spread", 0) or 0)
+            pat = attrs.get("pattern", "square")
+            desc = attrs.get("description", "")
+            attrs.setdefault("damage", dmg)
+            attrs.setdefault("spread", spr)
+            attrs.setdefault("pattern", pat)
+            attrs.setdefault("description", desc)
+            # ensure per-hazard intensity and weight defaults
+            attrs.setdefault("intensity", float(attrs.get("intensity", 1.0)))
+            attrs.setdefault("weight", float(attrs.get("weight", 1.0)))
+            # record mapping
+            h = Hazard(name, dmg, pat, spr, desc)
+            hazards.append(h)
+            hazard_by_name[name] = h
+            # populate weights map from attrs
+            try:
+                weights[name] = float(attrs.get("weight", 1.0))
+            except Exception:
+                weights[name] = 1.0
+
+        # expose on the instance for runtime use
+        self.hazards = hazards
+        self.hazard_by_name = hazard_by_name
+        self.settings["weights"] = weights
+        self.settings["hazard_attrs"] = hazard_attrs
+        # Ensure increments_bounds has sensible defaults
+        ib = self.settings.setdefault("increments_bounds", {})
+        ib.setdefault("intensity", {"min": 0.2, "max": 3.0, "increment": 0.1})
+        ib.setdefault("weights", {"min": 0.05, "max": 3.0, "increment": 0.05})
+        ib.setdefault("damage", {"min": 0, "max": None, "increment": 5})
+        ib.setdefault("spread", {"min": 0, "max": None, "increment": 1})
+        self.settings["increments_bounds"] = ib
 
     def start_placement(self) -> None:
         self.state = "place"
@@ -505,7 +569,9 @@ class Game:
             if player.house in affected:
                 # compute damage including intensity and mitigations
                 base = self.current_hazard.damage
-                dmg = int(base * float(self.settings.get("intensity", 1.0)))
+                # use per-hazard intensity if present in settings, else fallback to 1.0
+                intensity = float(self.settings.get("hazard_attrs", {}).get(self.current_hazard.name, {}).get("intensity", 1.0))
+                dmg = int(base * intensity)
                 if player.levee_active:
                     dmg = dmg // 2
                     player.levee_active = False
@@ -559,7 +625,7 @@ class Game:
         return None
 
     def _hazard_template(self, name: str) -> Hazard | None:
-        return HAZARD_BY_NAME.get(name)
+        return getattr(self, "hazard_by_name", {}).get(name)
 
     def _hazard_attr(self, hazard_name: str, key: str, fallback):
         attrs = self.settings.get("hazard_attrs", {}).get(hazard_name, {})
@@ -612,12 +678,34 @@ class Game:
 
         self.settings_buttons[name]["pattern"] = pattern_rect
 
+        attr_rows = []
+        # Determine numeric attribute keys to show: include any numeric-like keys
+        # present in the hazard's attrs dict (exclude pattern/description).
+        for k, v in attrs.items():
+            # if k in {"pattern", "description"}:
+            #     continue
+            if isinstance(v, (int, float)):
+                display = f"Value: {attrs.get(k, getattr(template, k, 0))}"
+                label = k.replace("_", " ").capitalize()
+                attr_rows.append((k, label, display))
 
-        for attr_key_name, name_text, var_text in [
-            ("wei", "Weight", f"{int(weight * 100)}%"),
-            ("dmg", "Damage", f"Dmg: {attrs.get('damage', template.damage if template is not None else 0)}"),
-            ("spr", "Spread", f"Spr: {attrs.get('spread', template.spread if template is not None else 0)}"),
-        ]:
+
+        # for key in numeric_keys:
+        #     if key == "damage":
+        #         display = f"Dmg: {attrs.get('damage', template.damage if template is not None else 0)}"
+        #         label = "Damage"
+        #     elif key == "spread":
+        #         display = f"Spr: {attrs.get('spread', template.spread if template is not None else 0)}"
+        #         label = "Spread"
+        #     elif key == "intensity":
+        #         display = f"{float(attrs.get('intensity', 1.0)):.2f}x"
+        #         label = "Intensity"
+        #     else:
+        #         display = str(attrs.get(key, ""))
+        #         label = key.replace("_", " ").capitalize()
+        #     attr_rows.append((key, label, display))
+
+        for attr_key_name, name_text, var_text in attr_rows:
             dec_rect, inc_rect = self._draw_stepper_controls(
                 attr_x,
                 attr_y,
@@ -849,19 +937,14 @@ class Game:
             y = sbox.y + 44 - self.settings_scroll
             self.settings_buttons = {}
             patterns = ["square", "diamond", "cross", "line"]
-            for name, weight in self.settings["weights"].items():
+            # Build a deterministic list of hazard names from weights and hazard_attrs
+            combined_keys: list[str] = []
+            for key in list(self.settings.get("weights", {}).keys()) + list(self.settings.get("hazard_attrs", {}).keys()) + [h.name for h in getattr(self, "hazards", [])]:
+                if key not in combined_keys:
+                    combined_keys.append(key)
+            for name in combined_keys:
+                weight = self.settings.get("weights", {}).get(name, 1.0)
                 y = self._draw_settings_hazard_row(sbox, name, weight, y, patterns)
-            self.draw_text("Intensity", "small", TEXT, (sbox.x + 12, y))
-            int_minus, int_plus = self._draw_stepper_controls(
-                sbox.x + 12,
-                y,
-                -6,
-                "Intensity",
-                f"{self.settings['intensity']:.2f}x",
-                "small",
-                14,
-            )
-            self.settings_buttons["__intensity__"] = {"dec_wei": int_minus, "inc_wei": int_plus}
             self.screen.set_clip(None)
             self.settings_content_height = max(0, (y - (sbox.y + 44) + self.settings_scroll))
 
@@ -990,45 +1073,48 @@ class Game:
                             self.save_settings()
                             self.pattern_dropdown = None
                             return
-                if rects["dec_wei"].collidepoint(pos):
-                    if name == "__intensity__":
-                        self.settings["intensity"] = max(0.2, self.settings["intensity"] - 0.1)
-                    else:
-                        self.settings["weights"][name] = max(0.05, self.settings["weights"][name] - 0.05)
-                    self.save_settings()
-                    return
-                if rects["inc_wei"].collidepoint(pos):
-                    if name == "__intensity__":
-                        self.settings["intensity"] = min(3.0, self.settings["intensity"] + 0.1)
-                    else:
-                        self.settings["weights"][name] = min(3.0, self.settings["weights"][name] + 0.05)
-                    self.save_settings()
-                    return
-                # damage / spread controls
-                if "dec_dmg" in rects and rects["dec_dmg"].collidepoint(pos):
-                    attrs = self.settings.setdefault("hazard_attrs", {})
-                    entry = attrs.setdefault(name, {})
-                    entry["damage"] = max(1, entry.get("damage", 0) - 5)
-                    self.save_settings()
-                    return
-                if "inc_dmg" in rects and rects["inc_dmg"].collidepoint(pos):
-                    attrs = self.settings.setdefault("hazard_attrs", {})
-                    entry = attrs.setdefault(name, {})
-                    entry["damage"] = entry.get("damage", 0) + 5
-                    self.save_settings()
-                    return
-                if "dec_sp" in rects and rects["dec_sp"].collidepoint(pos):
-                    attrs = self.settings.setdefault("hazard_attrs", {})
-                    entry = attrs.setdefault(name, {})
-                    entry["spread"] = max(0, entry.get("spread", 0) - 1)
-                    self.save_settings()
-                    return
-                if "inc_sp" in rects and rects["inc_sp"].collidepoint(pos):
-                    attrs = self.settings.setdefault("hazard_attrs", {})
-                    entry = attrs.setdefault(name, {})
-                    entry["spread"] = entry.get("spread", 0) + 1
-                    self.save_settings()
-                    return
+                # generic stepper buttons (dec_/inc_) handling
+                for key, rect in list(rects.items()):
+                    if not isinstance(key, str):
+                        continue
+                    if (key.startswith("dec_") or key.startswith("inc_")) and rect.collidepoint(pos):
+                        action, attr_key = key.split("_", 1)
+                        # numeric hazard attrs
+                        attrs = self.settings.setdefault("hazard_attrs", {})
+                        entry = attrs.setdefault(name, {})
+                        # determine bounds and step for this attribute
+                        bounds = self.settings.get("increments_bounds", {}).get(attr_key, {})
+                        step = bounds.get("increment", 1)
+                        mn = bounds.get("min", 0)
+                        mx = bounds.get("max", None)
+
+                        cur_val = entry.get(attr_key, 0) or 0
+                        # handle integers specially
+                        if isinstance(cur_val, int):
+                            if action == "dec":
+                                new = cur_val - int(step)
+                            else:
+                                new = cur_val + int(step)
+                            if mn is not None:
+                                new = max(int(mn), new)
+                            if mx is not None:
+                                new = min(int(mx), new)
+                            entry[attr_key] = new
+                        else:
+                            # float-like
+                            curf = float(cur_val)
+                            if action == "dec":
+                                newf = curf - float(step)
+                            else:
+                                newf = curf + float(step)
+                            if mn is not None:
+                                newf = max(float(mn), newf)
+                            if mx is not None:
+                                newf = min(float(mx), newf)
+                            entry[attr_key] = round(newf, 2)
+                        self.save_settings()
+                        return
+
                 # pattern button
                 if "pattern" in rects and rects["pattern"].collidepoint(pos):
                     # toggle dropdown
@@ -1037,10 +1123,15 @@ class Game:
                     else:
                         self.pattern_dropdown = name
                     return
+
                 # edit description
                 if "edit_desc" in rects and rects["edit_desc"].collidepoint(pos):
                     # start editing description
-                    cur = self.settings.get("hazard_attrs", {}).get(name, {}).get("description", next((h.description for h in HAZARDS if h.name == name), ""))
+                    default_desc = ""
+                    tmpl = getattr(self, "hazard_by_name", {}).get(name)
+                    if tmpl is not None:
+                        default_desc = tmpl.description
+                    cur = self.settings.get("hazard_attrs", {}).get(name, {}).get("description", default_desc)
                     self.editing_desc = (name, cur)
                     return
 
