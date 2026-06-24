@@ -14,5 +14,21 @@
     "result": "played",
     "rounds_played": 27,
     "timestamp": "2026-06-18T07:35:55"
+  },
+  {
+    "name": "m",
+    "survived_rounds": 22,
+    "final_money": 240,
+    "result": "winner",
+    "rounds_played": 23,
+    "timestamp": "2026-06-21T15:03:46"
+  },
+  {
+    "name": "j",
+    "survived_rounds": 22,
+    "final_money": 0,
+    "result": "played",
+    "rounds_played": 23,
+    "timestamp": "2026-06-21T15:03:46"
   }
 ]

@@ -11,7 +11,7 @@ from pathlib import Path
 import pygame
 
 try:
-    from volcano_expansion import VolcanoExpansion
+    from Simple_Version.volcano_expansion import VolcanoExpansion
 except Exception:
     VolcanoExpansion = None
 
@@ -62,10 +62,7 @@ class Player:
 @dataclass(frozen=True)
 class Hazard:
     name: str
-    damage: int
-    pattern: str
-    spread: int
-    description: str
+    attrs: dict
 
 
 # Hazards are loaded from `settings.json` at runtime and exposed on each Game
@@ -173,22 +170,22 @@ def hazard_cells(
 ) -> set[tuple[int, int]]:
     ox, oy = origin
     cells: set[tuple[int, int]] = set()
-    if hazard.pattern == "square":
-        for dy in range(-hazard.spread, hazard.spread + 1):
-            for dx in range(-hazard.spread, hazard.spread + 1):
+    if hazard.attrs.get("pattern") == "square":
+        for dy in range(-hazard.attrs.get("spread", 0.0), hazard.attrs.get("spread", 0.0) + 1):
+            for dx in range(-hazard.attrs.get("spread", 0.0), hazard.attrs.get("spread", 0.0) + 1):
                 cells.add((ox + dx, oy + dy))
-    elif hazard.pattern == "diamond":
-        for dy in range(-hazard.spread, hazard.spread + 1):
-            for dx in range(-hazard.spread, hazard.spread + 1):
-                if abs(dx) + abs(dy) <= hazard.spread:
+    elif hazard.attrs.get("pattern") == "diamond":
+        for dy in range(-hazard.attrs.get("spread", 0.0), hazard.attrs.get("spread", 0.0) + 1):
+            for dx in range(-hazard.attrs.get("spread", 0.0), hazard.attrs.get("spread", 0.0) + 1):
+                if abs(dx) + abs(dy) <= hazard.attrs.get("spread", 0.0):
                     cells.add((ox + dx, oy + dy))
-    elif hazard.pattern == "cross":
+    elif hazard.attrs.get("pattern") == "cross":
         cells.add((ox, oy))
-        for step in range(1, hazard.spread + 1):
+        for step in range(1, hazard.attrs.get("spread", 0.0) + 1):
             cells.update({(ox + step, oy), (ox - step, oy), (ox, oy + step), (ox, oy - step)})
-    elif hazard.pattern == "line":
+    elif hazard.attrs.get("pattern") == "line":
         direction = direction or (1, 0)
-        for step in range(hazard.spread):
+        for step in range(hazard.attrs.get("spread", 0.0)):
             cells.add((ox + direction[0] * step, oy + direction[1] * step))
     return {(x, y) for x, y in cells if 0 <= x < COLS and 0 <= y < ROWS}
 
@@ -232,15 +229,16 @@ class Game:
         self.hazard_expires_at = 0.0
         self.move_queue: list[Player] = []
         self.expansion = VolcanoExpansion() if VolcanoExpansion is not None else None
+        if self.expansion is not None:
+            print("VolcanoExpansion: loaded")
         self.volcano_pos: tuple[int, int] | None = None
         self.volcano_revealed: bool = False
         self.show_settings: bool = False
         # default settings; actual hazards/weights are loaded from settings.json
-        self.settings: dict = {"intensity": 1.0}
+        self.settings: dict = {}
         self.settings_buttons: dict = {}
         self.last_hazard_probs: dict | None = None
         self.load_settings()
-        self.normalize_settings()
         self.settings_scroll: int = 0
         self.settings_content_height: int = 0
         self.editing_desc: tuple[str, str] | None = None
@@ -253,87 +251,25 @@ class Game:
         self.last_round_summary = ""
 
     def _fallback_weighted_hazard_selection(self) -> None:
-        # compute per-hazard and per-cell weights similar to the expansion but local
+        # Base game fallback: choose a random hazard from settings and a random land epicenter.
         rows = ROWS
         cols = COLS
         land_cells = [(x, y) for y in range(rows) for x in range(cols) if self.island[y][x]]
         if not land_cells:
-            if not getattr(self, "hazards", None):
-                raise RuntimeError("No hazards configured in settings.json")
-            self.current_hazard = random.choice(self.hazards)
-            self.hazard_origin = (0, 0)
-            self.hazard_direction = None
-            self.last_hazard_probs = {h.name: 1.0 / len(self.hazards) for h in self.hazards}
-            return
+            raise RuntimeError("No land available for hazard epicenter")
+        if not self.settings.get("hazard_attrs", None):
+            raise RuntimeError("No hazards configured in settings.json")
 
-        weights_map = {}
-        totals = {}
-        for h in self.hazards:
-            name = h.name
-            wlist = []
-            tot = 0.0
-            for c in land_cells:
-                # use Manhattan normalized by grid diagonal
-                d = manhattan(self.volcano_pos or (COLS // 2, ROWS // 2), c)
-                maxd = math.hypot(COLS, ROWS)
-                dnorm = min(1.0, d / (maxd or 1.0))
-                ln = name.lower()
-                if ln.startswith("ash"):
-                    modifier = 0.6 + 1.4 * dnorm
-                elif "pyro" in ln or "radius" in ln:
-                    modifier = 1.6 - 1.2 * dnorm
-                elif "lava" in ln or "mud" in ln:
-                    modifier = 1.4 - 0.9 * dnorm
-                else:
-                    modifier = 1.0
-                base = 1.0
-                override = float(self.settings.get("weights", {}).get(name, 1.0))
-                rboost = 1.0 + max(0.0, (self.round_number - 1)) * 0.03
-                w = max(0.0, base * modifier * rboost) * override
-                wlist.append(w)
-                tot += w
-            weights_map[name] = wlist
-            totals[name] = tot
+        # choose random hazard (use settings overrides if present)
+        h_choice = random.choice(list(self.settings.get("hazard_attrs", {}).keys()))
+        self.current_hazard = Hazard(h_choice, self.settings.get("hazard_attrs", {}).get(h_choice, {}))
 
-        total_all = sum(totals.values())
-        probs = {name: (totals[name] / total_all if total_all > 0 else 1.0 / len(self.hazards)) for name in totals}
-        # sample hazard
-        names = list(totals.keys())
-        hazard_weights = [totals[n] for n in names]
-        if sum(hazard_weights) <= 0:
-            chosen = random.choice(names)
-        else:
-            chosen = random.choices(names, weights=hazard_weights, k=1)[0]
-        # sample epicenter
-        cell_weights = weights_map[chosen]
-        if sum(cell_weights) <= 0:
-            epicenter = random.choice(land_cells)
-        else:
-            epicenter = random.choices(land_cells, weights=cell_weights, k=1)[0]
-        # map name to Hazard
-        for h in self.hazards:
-            if h.name == chosen:
-                # apply overrides
-                overrides = self.settings.get("hazard_attrs", {}).get(h.name, {})
-                dmg = int(overrides.get("damage", h.damage))
-                spr = int(overrides.get("spread", h.spread))
-                pat = overrides.get("pattern", h.pattern)
-                desc = overrides.get("description", h.description)
-                self.current_hazard = Hazard(h.name, dmg, pat, spr, desc)
-                break
-        else:
-            if not getattr(self, "hazards", None):
-                raise RuntimeError("No hazards configured in settings.json")
-            h = random.choice(self.hazards)
-            overrides = self.settings.get("hazard_attrs", {}).get(h.name, {})
-            dmg = int(overrides.get("damage", h.damage))
-            spr = int(overrides.get("spread", h.spread))
-            pat = overrides.get("pattern", h.pattern)
-            desc = overrides.get("description", h.description)
-            self.current_hazard = Hazard(h.name, dmg, pat, spr, desc)
+        # random epicenter
+        epicenter = random.choice(land_cells)
         self.hazard_origin = epicenter
-        self.hazard_direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)]) if self.current_hazard.pattern == "line" else None
-        self.last_hazard_probs = probs
+        self.hazard_direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)]) if self.current_hazard.attrs.get("pattern") == "line" else None
+        # uniform probabilities for UI display
+        self.last_hazard_probs = {n: 1.0 / len(self.settings.get("hazard_attrs", {})) for n in list(self.settings.get("hazard_attrs", {}).keys())}
 
     def set_message(self, text: str, seconds: float = 2.5) -> None:
         self.message = text
@@ -377,24 +313,7 @@ class Game:
                         # If file uses a single hazard_attrs section with per-hazard entries,
                         # parse those and populate weights and hazard_attrs accordingly.
                         if "hazard_attrs" in data and isinstance(data["hazard_attrs"], dict):
-                            for hname, props in data["hazard_attrs"].items():
-                                # per-hazard props may include weight/intensity/damage/spread/pattern/description
-                                if isinstance(props, dict):
-                                    # weight
-                                    w = props.get("weight")
-                                    if w is not None:
-                                        try:
-                                            self.settings.setdefault("weights", {})[hname] = float(w)
-                                        except Exception:
-                                            pass
-                                    # copy numeric/other attrs
-                                    entry = self.settings.setdefault("hazard_attrs", {}).setdefault(hname, {})
-                                    for key in ("damage", "spread", "pattern", "description"):
-                                        if key in props:
-                                            entry[key] = props.get(key)
-                        # Deprecated top-level 'weights'/'intensity' are no longer supported.
-                        # All hazard configuration should be provided under 'hazard_attrs',
-                        # and bounds/steps under 'increments_bounds'.
+                            self.settings["hazard_attrs"] = data["hazard_attrs"]
         except Exception:
             pass
 
@@ -404,55 +323,6 @@ class Game:
                 json.dump(self.settings, fh, indent=2)
         except Exception:
             pass
-
-    def normalize_settings(self) -> None:
-        # Ensure settings include entries for all known hazards and for any hazards present
-        # in the loaded settings file. Fill missing defaults from templates.
-        weights = self.settings.setdefault("weights", {})
-        hazard_attrs = self.settings.setdefault("hazard_attrs", {})
-
-        # Ensure a weight entry exists for every hazard defined in settings
-        for name in list(hazard_attrs.keys()):
-            weights.setdefault(name, 1.0)
-
-        # Fill missing attribute defaults and build runtime hazards list/mapping
-        hazards: list[Hazard] = []
-        hazard_by_name: dict[str, Hazard] = {}
-        for name, attrs in list(hazard_attrs.items()):
-            # ensure numeric defaults exist
-            dmg = int(attrs.get("damage", 0) or 0)
-            spr = int(attrs.get("spread", 0) or 0)
-            pat = attrs.get("pattern", "square")
-            desc = attrs.get("description", "")
-            attrs.setdefault("damage", dmg)
-            attrs.setdefault("spread", spr)
-            attrs.setdefault("pattern", pat)
-            attrs.setdefault("description", desc)
-            # ensure per-hazard intensity and weight defaults
-            attrs.setdefault("intensity", float(attrs.get("intensity", 1.0)))
-            attrs.setdefault("weight", float(attrs.get("weight", 1.0)))
-            # record mapping
-            h = Hazard(name, dmg, pat, spr, desc)
-            hazards.append(h)
-            hazard_by_name[name] = h
-            # populate weights map from attrs
-            try:
-                weights[name] = float(attrs.get("weight", 1.0))
-            except Exception:
-                weights[name] = 1.0
-
-        # expose on the instance for runtime use
-        self.hazards = hazards
-        self.hazard_by_name = hazard_by_name
-        self.settings["weights"] = weights
-        self.settings["hazard_attrs"] = hazard_attrs
-        # Ensure increments_bounds has sensible defaults
-        ib = self.settings.setdefault("increments_bounds", {})
-        ib.setdefault("intensity", {"min": 0.2, "max": 3.0, "increment": 0.1})
-        ib.setdefault("weights", {"min": 0.05, "max": 3.0, "increment": 0.05})
-        ib.setdefault("damage", {"min": 0, "max": None, "increment": 5})
-        ib.setdefault("spread", {"min": 0, "max": None, "increment": 1})
-        self.settings["increments_bounds"] = ib
 
     def start_placement(self) -> None:
         self.state = "place"
@@ -468,10 +338,17 @@ class Game:
             # place the main volcano and show it as the first-event epicenter
             try:
                 self.volcano_pos = self.expansion.place_volcano(self.island)
-            except Exception:
+            except Exception as e:
+                print("place_volcano failed:", e)
                 self.volcano_pos = None
             if self.volcano_pos is not None:
-                self.current_hazard = Hazard("Volcano", 0, "square", 0, "Main volcano revealed")
+                self.current_hazard = Hazard("Volcano", {
+                    "damage": 0,
+                    "spread": 0,
+                    "pattern": "square",
+                    "description": "Main volcano revealed.",
+                    "weight": 1.0,
+                    "intensity": 1.0})
                 self.hazard_origin = self.volcano_pos
                 self.hazard_direction = None
                 self.volcano_revealed = True
@@ -485,19 +362,14 @@ class Game:
         if self.expansion and self.volcano_revealed and self.volcano_pos is not None:
             try:
                 spec, epicenter, probs = self.expansion.choose_hazard(
-                    self.volcano_pos, self.island, self.round_number, weights=self.settings.get("weights", {})
+                    self.volcano_pos, self.island, self.round_number, self.settings.get("hazard_attrs", {})
                 )
-                # apply user overrides for hazard attributes
-                hattrs = self.settings.get("hazard_attrs", {}).get(spec.get("name", ""), {})
-                dmg = int(hattrs.get("damage", spec.get("damage", 0)))
-                spr = int(hattrs.get("spread", spec.get("spread", 0)))
-                pat = hattrs.get("pattern", spec.get("pattern", "square"))
-                desc = hattrs.get("description", spec.get("description", ""))
-                self.current_hazard = Hazard(spec["name"], dmg, pat, spr, desc)
+                self.current_hazard = Hazard(spec["name"], spec["attrs"])
                 self.hazard_origin = epicenter
-                self.hazard_direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)]) if self.current_hazard.pattern == "line" else None
+                self.hazard_direction = random.choice([(1, 0), (-1, 0), (0, 1), (0, -1)]) if self.current_hazard.attrs["pattern"] == "line" else None
                 self.last_hazard_probs = probs
-            except Exception:
+            except Exception as e:
+                print("expansion.choose_hazard failed:", e)
                 self._fallback_weighted_hazard_selection()
         else:
             self._fallback_weighted_hazard_selection()
@@ -568,10 +440,10 @@ class Game:
                 continue
             if player.house in affected:
                 # compute damage including intensity and mitigations
-                base = self.current_hazard.damage
+                base_dmg = self.current_hazard.attrs["damage"]
                 # use per-hazard intensity if present in settings, else fallback to 1.0
                 intensity = float(self.settings.get("hazard_attrs", {}).get(self.current_hazard.name, {}).get("intensity", 1.0))
-                dmg = int(base * intensity)
+                dmg = int(base_dmg * intensity)
                 if player.levee_active:
                     dmg = dmg // 2
                     player.levee_active = False
@@ -586,7 +458,7 @@ class Game:
                     player.alive = False
                     player.eliminated_round = self.round_number
         if hit_names:
-            self.last_round_summary = f"{self.current_hazard.name} hit: {', '.join(hit_names)} (-{self.current_hazard.damage})"
+            self.last_round_summary = f"{self.current_hazard.name} hit: {', '.join(hit_names)} (-{self.current_hazard.attrs['damage']})"
         else:
             self.last_round_summary = f"{self.current_hazard.name} landed, but no houses were hit."
         self.revealed_hazard = self.current_hazard
@@ -856,12 +728,11 @@ class Game:
             if hazard:
                 self.draw_text(f"Round {self.round_number}", "body", TEXT, (inner.x, inner.y + 82))
                 self.draw_text(hazard.name, "body", BAD, (inner.x, inner.y + 120))
-                self.draw_wrapped(hazard.description, pygame.Rect(inner.x, inner.y + 160, inner.width, 92), "small", MUTED)
-                self.draw_text(f"Damage: ${hazard.damage}", "body", ACCENT, (inner.x, inner.y + 160))
-                self.draw_text("Click a land square to reveal the hazard center.", "small", MUTED, (inner.x, inner.y + 192))
+                self.draw_wrapped(hazard.attrs["description"], pygame.Rect(inner.x, inner.y + 160, inner.width, 92), "small", MUTED)
+                self.draw_text(f"Damage: ${hazard.attrs['damage']}", "body", ACCENT, (inner.x, inner.y + 160))
                 probs = getattr(self, "last_hazard_probs", None)
                 if probs:
-                    y = inner.y + 230
+                    y = inner.y + 240
                     self.draw_text("Selection probabilities:", "small", MUTED, (inner.x, y))
                     y += 18
                     for name, p in sorted(probs.items(), key=lambda kv: kv[1], reverse=True)[:6]:
@@ -878,9 +749,9 @@ class Game:
                     "small",
                     MUTED,
                 )
-                if self.selected_move_cell is not None and player.house is not None:
-                    cost = manhattan(player.house, self.selected_move_cell) * MOVE_COST_PER_TILE
-                    self.draw_text(f"Selected move cost: ${cost}", "body", ACCENT, (inner.x, inner.y + 242))
+                # if self.selected_move_cell is not None and player.house is not None:
+                #     cost = manhattan(player.house, self.selected_move_cell) * MOVE_COST_PER_TILE
+                #     self.draw_text(f"Selected move cost: ${cost}", "body", ACCENT, (inner.x, inner.y + 242))
                 self.draw_text("Press S to skip your move.", "small", MUTED, (inner.x, inner.y + 222))
                 # Mitigation purchase buttons
                 buy_x = inner.x + 8
@@ -937,13 +808,13 @@ class Game:
             y = sbox.y + 44 - self.settings_scroll
             self.settings_buttons = {}
             patterns = ["square", "diamond", "cross", "line"]
-            # Build a deterministic list of hazard names from weights and hazard_attrs
+            # Build a deterministic list of hazard names from hazard_attrs and known hazards
             combined_keys: list[str] = []
-            for key in list(self.settings.get("weights", {}).keys()) + list(self.settings.get("hazard_attrs", {}).keys()) + [h.name for h in getattr(self, "hazards", [])]:
+            for key in list(self.settings.get("hazard_attrs", {}).keys()) + [h.name for h in getattr(self, "hazards", [])]:
                 if key not in combined_keys:
                     combined_keys.append(key)
             for name in combined_keys:
-                weight = self.settings.get("weights", {}).get(name, 1.0)
+                weight = float(self.settings.get("hazard_attrs", {}).get(name, {}).get("weight", 1.0))
                 y = self._draw_settings_hazard_row(sbox, name, weight, y, patterns)
             self.screen.set_clip(None)
             self.settings_content_height = max(0, (y - (sbox.y + 44) + self.settings_scroll))
@@ -1084,11 +955,11 @@ class Game:
                         entry = attrs.setdefault(name, {})
                         # determine bounds and step for this attribute
                         bounds = self.settings.get("increments_bounds", {}).get(attr_key, {})
-                        step = bounds.get("increment", 1)
-                        mn = bounds.get("min", 0)
+                        step = bounds.get("increment", 1.0)
+                        mn = bounds.get("min", 0.0)
                         mx = bounds.get("max", None)
 
-                        cur_val = entry.get(attr_key, 0) or 0
+                        cur_val = entry.get(attr_key, 0.0) or 0.0
                         # handle integers specially
                         if isinstance(cur_val, int):
                             if action == "dec":

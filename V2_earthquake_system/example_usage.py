@@ -16,21 +16,36 @@ from simulator import EarthquakeSimulator
 
 
 def run_demo(model_name: str, location_model):
+    print(f"\n=== {model_name} ===")
+
     sim = EarthquakeSimulator(
         lambda0=2.0,
-        k=2.0,
-        m_min=3.0,
+        k=4.0,
+        m_min=1.0,
         m_max=7.0,
         b=1.0,
         seed=123,
         location_model=location_model,
+        short_window_days=30.0,
+        long_window_days=90.0,
+        rate_ratio_threshold=2.5,
+        min_short_count=8,
+        ash_mag_threshold=3.5,
+        pdc_mag_threshold=5.0,
+        eruption_cooldown_days=30.0,
     )
 
     all_events = []
+    eruption_log = []
 
     # Generate one year in monthly steps
     for _ in range(12):
         all_events.extend(sim.step(1.0 / 12.0))
+
+        eruption = sim.check_for_eruption()
+        if eruption is not None:
+            eruption_log.append(eruption)
+            print(f"  eruption triggered: {eruption['eruption_type']} at t={eruption['time_years']:.2f} yr")
 
     # Add aftershocks for the first background event, if one exists
     background_events = [e for e in all_events if e["type"] == "background"]
@@ -48,7 +63,16 @@ def run_demo(model_name: str, location_model):
         )
         all_events.extend(aftershocks)
 
-    return sim, all_events
+        # Check again after adding aftershocks
+        eruption = sim.check_for_eruption()
+        if eruption is not None:
+            eruption_log.append(eruption)
+            print(f"  eruption triggered after aftershocks: {eruption['eruption_type']} at t={eruption['time_years']:.2f} yr")
+
+    print("events generated:", len(all_events))
+    print("statistics:", sim.get_statistics())
+
+    return sim, all_events, eruption_log
 
 
 def monthly_counts(events):
@@ -58,10 +82,19 @@ def monthly_counts(events):
     return counts
 
 
-def cumulative_magnitude_frequency(events, min_mag=3.0, max_mag=7.0, step=0.1):
-    mags = np.array([e["magnitude"] for e in events])
-    thresholds = np.arange(min_mag, max_mag + step, step)
-    cumulative_counts = np.array([(mags >= thr).sum() for thr in thresholds])
+def cumulative_magnitude_frequency(events):
+    mags = np.array([e["magnitude"] for e in events], dtype=float)
+    if mags.size == 0:
+        return np.array([]), np.array([])
+
+    min_mag = int(np.floor(mags.min()))
+    max_mag = int(np.ceil(mags.max()))
+    thresholds = np.arange(min_mag, max_mag + 1, 1)
+
+    cumulative_counts = np.array([
+        np.sum(mags >= thr)
+        for thr in thresholds
+    ])
     return thresholds, cumulative_counts
 
 
@@ -100,7 +133,7 @@ def plot_results(results, bounds):
     # -------------------------------------------------
     # Left panel: location map for each model
     # -------------------------------------------------
-    for model_name, (_, events) in results.items():
+    for model_name, (_, events, _) in results.items():
         colour = colours[model_name]
 
         for event_type in ("background", "aftershock"):
@@ -192,9 +225,9 @@ def plot_results(results, bounds):
         color="black",
     )
     ax_magfreq.set_yscale("log")
-    ax_magfreq.set_xlabel("Magnitude (Mw)")
-    ax_magfreq.set_ylabel("Cumulative number of events")
-    ax_magfreq.set_title("Magnitude-Frequency Relationship")
+    ax_magfreq.set_xlabel("Magnitude Threshold (Mw)")
+    ax_magfreq.set_ylabel("N(M ≥ m)")
+    ax_magfreq.set_title("Cumulative Magnitude-Frequency Relationship")
     ax_magfreq.grid(True, which="both", linestyle=":", alpha=0.4)
 
     # -------------------------------------------------

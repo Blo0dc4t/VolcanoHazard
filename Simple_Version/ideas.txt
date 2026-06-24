@@ -1,0 +1,2 @@
+the code should work such that all i need to do to add another hazard and have it shown and working is to add it to the json file. use the updated settings.json to get the min and max bounds for the settings
+preferred hazard distances away from the volcano of "near" "medium" and "far" corresponding to tile ranges they can appear in

@@ -1,12 +1,11 @@
 {
-  "intensity": 1.0,
   "increments_bounds": {
     "intensity": {
       "min": 0.5,
       "max": 2.0,
       "increment": 0.1
     },
-    "weights": {
+    "weight": {
       "min": 0.05,
       "max": 3.0,
       "increment": 0.05
@@ -14,70 +13,62 @@
     "damage": {
       "min": 0.0,
       "max": null,
-      "increment": 5
+      "increment": 5.0
     },
     "spread": {
       "min": 0.0,
       "max": null,
-      "increment": 1
+      "increment": 1.0
     }
-  },
-  "weights": {
-    "Ashfall": 1.0,
-    "Lava Spur": 1.0,
-    "Bomb Shower": 1.0,
-    "Pyroclastic Surge": 1.0,
-    "Mudflow": 1.0,
-    "Radius Blast": 1.0
   },
   "hazard_attrs": {
     "Ashfall": {
       "damage": 60,
-      "spread": 2,
+      "spread": 1.0,
       "pattern": "diamond",
       "description": "Fine ash blankets a small diamond.",
-      "intensity": 1.0,
-      "weight": 1
+      "weight": 1.0,
+      "intensity": 1.0
     },
     "Lava Spur": {
       "damage": 100,
-      "spread": 1,
+      "spread": 1.0,
       "pattern": "square",
       "description": "A compact 3x3 lava burst.",
-      "intensity": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "intensity": 1.0
     },
     "Bomb Shower": {
       "damage": 140,
-      "spread": 2,
+      "spread": 2.0,
       "pattern": "cross",
       "description": "A cross-shaped shower of volcanic bombs.",
-      "intensity": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "intensity": 1.0
     },
     "Pyroclastic Surge": {
       "damage": 180,
-      "spread": 2,
+      "spread": 2.0,
       "pattern": "diamond",
       "description": "A hot surge spreads in a wider diamond.",
-      "intensity": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "intensity": 1.0
     },
     "Mudflow": {
       "damage": 120,
-      "spread": 4,
+      "spread": 4.0,
       "pattern": "line",
       "description": "A mudflow races in a straight line.",
-      "intensity": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "intensity": 1.0
     },
     "Radius Blast": {
       "damage": 220,
-      "spread": 1,
+      "spread": 1.0,
       "pattern": "square",
       "description": "A heavy blast damages a 3x3 zone.",
-      "intensity": 1.0,
-      "weight": 1.0
+      "weight": 1.0,
+      "intensity": 1.0
     }
   }
 }

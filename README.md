@@ -1,64 +1,218 @@
-# VolcanoHazard
+# Earthquake Simulation Package
 
-VolcanoRisk Manager — a small local multiplayer game written with pygame.
+This project generates synthetic earthquake catalogues for games, simulations, or visualisation.
 
-Players place houses on a procedurally generated island and try to survive rounds of volcanic hazards while managing money and mitigation purchases.
+## Files
 
-Run
+- `simulator.py` — handles earthquake occurrence, magnitudes, seismic moments, and aftershocks.
+- `location_models.py` — handles earthquake spatial distributions.
+- `example_usage.py` — demonstrates usage and plotting.
 
-```bash
-conda activate VolcanoHazard
-python main.py
+---
+
+## simulator.py
+
+This file contains the `EarthquakeSimulator` class.
+
+### Earthquake Rate
+
+Background earthquakes are generated using a non-homogeneous Poisson process:
+
+```math
+\lambda(t) = \lambda_0 e^{kt}
 ```
 
-Basic rules
+where:
 
-- Add players in the lobby by typing names and pressing Enter (2–8 players).
-- Each player places one house on a land tile.
-- Each round a hazard is revealed (see Hazards below). If a house lies in the hazard pattern it takes damage (money lost).
-- After damage, surviving players take turns to optionally move their house; moving costs `Manhattan distance × MOVE_COST_PER_TILE`.
-- The last player with money remaining wins; results are appended to `leaderboard.json`.
+- `lambda0` is the starting earthquake rate
+- `k` controls how rapidly earthquake frequency increases
+- `t` is time in years
 
-Controls
+### Parameters
 
-- Mouse: click board squares to place/reveal/move as prompted.
-- Enter: confirm actions (join, place, or confirm move).
-- S (or Space): skip a move during the Move phase.
-- O: open/close the Settings panel.
-- Mouse wheel: scroll the Settings panel when it's open.
-- R: restart after game over.
-- L: toggle the leaderboard in the panel.
+| Parameter | Description |
+|------------|------------|
+| `lambda0` | Initial earthquake rate |
+| `k` | Exponential growth rate |
+| `m_min` | Minimum magnitude |
+| `m_max` | Maximum magnitude |
+| `b` | Gutenberg–Richter b-value |
+| `duration_years` | Simulation length |
+| `seed` | Random seed |
 
-Mitigations (buy during Move phase)
+### Example
 
-- Buy levee — $120: halves the damage from the next hazard that would hit your house (one-time), shown as a blue dot on your house.
-- Buy insurance — $80: after your house is hit, refunds half of the damage taken (one-time), shown as a yellow dot on your house.
+```python
+sim = EarthquakeSimulator(
+    lambda0=2.0,
+    k=2.0,
+    seed=123,
+)
+```
 
-Settings and expansion
+---
 
-- Press `O` to open the Settings overlay. It is scrollable and shows every hazard with controls to adjust:
-	- selection weight (affects how likely a hazard is chosen),
-	- damage (adjust in steps),
-	- spread (pattern size),
-	- pattern (choose from `square`, `diamond`, `cross`, `line`), and
-	- description (editable text).
-- Settings persist to `settings.json` and are applied at runtime — you can tune the behaviour of hazards and the overall intensity multiplier.
+## Magnitude Distribution
 
-- Optional volcano expansion: if `volcano_expansion.py` is present the game will place a main volcano on the island during the first round and subsequent hazards will be sampled with probabilities that depend on distance from that volcano (e.g., pyroclastic surges and lava more likely close to the volcano; ashfall more likely farther away). The Settings panel still modifies the final sampling probabilities (weights multiply the expansion's distance-based weights).
+Magnitudes follow a truncated Gutenberg–Richter distribution.
 
-Hazards (defaults)
+The Gutenberg–Richter relationship is:
 
-- Ashfall — light ashfall affecting a small diamond; default damage ~ $60.
-- Lava Spur — concentrated lava burst (square); default damage ~ $100.
-- Bomb Shower — cross-shaped shower of bombs; default damage ~ $140.
-- Pyroclastic Surge — hot surge spreading in a wider diamond; default damage ~ $180.
-- Mudflow — fast-moving line of debris; default damage ~ $120.
-- Radius Blast — heavy blast affecting a tight area; default damage ~ $220.
+```math
+\log_{10}N(M \ge m) = a - bm
+```
 
-Notes
+where:
 
-- The expansion module is optional and lives in `volcano_expansion.py`. If present it will be used automatically.
-- The game stores player leaderboard entries in `leaderboard.json` and settings in `settings.json` in the game folder.
-- The codebase is intentionally compact and designed for local play with simple, tweakable rules. If you want any UI refinements (sliders, tooltips, or small graphics), tell me which and I'll add them.
+- `N(M ≥ m)` is the cumulative number of earthquakes larger than magnitude `m`
+- `b` controls the relative proportion of large and small earthquakes
 
-Enjoy — and watch out for the volcano!
+Larger values of `b` produce relatively more small earthquakes.
+
+---
+
+## Seismic Moment
+
+Moment magnitude is converted to seismic moment using:
+
+```math
+M_0 = 10^{1.5M_w + 9.1}
+```
+
+where:
+
+- `M_w` is moment magnitude
+- `M_0` is seismic moment in N·m
+
+---
+
+## Aftershocks
+
+Aftershocks are generated using an Omori-style decay law.
+
+Key parameters:
+
+| Parameter | Description |
+|------------|------------|
+| `duration_days` | Length of aftershock sequence |
+| `c_days` | Near-time clustering parameter |
+| `p` | Decay exponent |
+| `productivity` | Expected aftershock productivity |
+| `alpha` | Magnitude dependence |
+
+---
+
+## location_models.py
+
+This file controls where earthquakes occur.
+
+### RandomLocationModel
+
+Uniform random spatial distribution.
+
+```python
+model = RandomLocationModel(bounds)
+```
+
+### VentCentredLocationModel
+
+Clusters earthquakes around a volcanic vent.
+
+```python
+model = VentCentredLocationModel(
+    bounds,
+    vent_x=50,
+    vent_y=50,
+    radial_scale=6,
+)
+```
+
+### FaultLocationModel
+
+Places earthquakes along fault segments.
+
+```python
+model = FaultLocationModel(
+    bounds,
+    segments=[
+        (10, 20, 85, 25, 1.0),
+    ],
+)
+```
+
+### VolcanicSwarmLocationModel
+
+Mixture of:
+
+- vent events
+- chamber events
+- edifice events
+- fault events
+
+Useful for volcanic unrest simulations.
+
+---
+
+## example_usage.py
+
+Produces three plots:
+
+### Earthquake Location Map
+
+Shows:
+
+- location model by colour
+- background earthquakes as circles
+- aftershocks as crosses
+
+### Magnitude–Frequency Relationship
+
+Plots:
+
+```math
+N(M \ge m)
+```
+
+for integer magnitude thresholds.
+
+### Time–Frequency Relationship
+
+Shows the number of earthquakes occurring in each month.
+
+---
+
+## Increasing Earthquake Frequency
+
+Increase:
+
+```python
+lambda0
+```
+
+to increase overall earthquake frequency.
+
+Increase:
+
+```python
+k
+```
+
+to make earthquake frequency rise more rapidly through the simulation.
+
+Example:
+
+```python
+sim = EarthquakeSimulator(
+    lambda0=5.0,
+    k=4.0,
+)
+```
+
+This will produce significantly more earthquakes than:
+
+```python
+sim = EarthquakeSimulator(
+    lambda0=1.0,
+    k=1.0,
+)
+```

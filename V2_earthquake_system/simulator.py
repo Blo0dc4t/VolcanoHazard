@@ -5,6 +5,7 @@ This module handles:
 - magnitude sampling,
 - seismic moment conversion,
 - optional aftershock generation,
+- eruption-state detection,
 - state save/load,
 - stepping through simulation time.
 """
@@ -32,6 +33,13 @@ class EarthquakeSimulator:
         duration_years: float = 1.0,
         seed: Optional[int] = None,
         location_model: Optional[LocationModel] = None,
+        short_window_days: float = 30.0,
+        long_window_days: float = 90.0,
+        rate_ratio_threshold: float = 3.0,
+        min_short_count: int = 20,
+        ash_mag_threshold: float = 4.5,
+        pdc_mag_threshold: float = 5.0,
+        eruption_cooldown_days: float = 14.0,
     ):
         self.lambda0 = float(lambda0)
         self.k = float(k)
@@ -41,6 +49,22 @@ class EarthquakeSimulator:
         self.duration_years = float(duration_years)
         self.seed = seed
         self.location_model = location_model
+
+        self.short_window_days = float(short_window_days)
+        self.long_window_days = float(long_window_days)
+        self.rate_ratio_threshold = float(rate_ratio_threshold)
+        self.min_short_count = int(min_short_count)
+        self.ash_mag_threshold = float(ash_mag_threshold)
+        self.pdc_mag_threshold = float(pdc_mag_threshold)
+        self.eruption_cooldown_days = float(eruption_cooldown_days)
+
+        if self.short_window_days <= 0 or self.long_window_days <= 0:
+            raise ValueError("Window lengths must be positive.")
+        if self.long_window_days < self.short_window_days:
+            raise ValueError("long_window_days should be >= short_window_days.")
+        if self.eruption_cooldown_days < 0:
+            raise ValueError("eruption_cooldown_days must be non-negative.")
+
         self.rng = np.random.default_rng(seed)
         self.reset(seed=seed)
 
@@ -92,6 +116,10 @@ class EarthquakeSimulator:
         self.aftershock_event_count = 0
         self.total_seismic_moment_Nm = 0.0
 
+        self.last_eruption_time = -np.inf
+        self.last_eruption_type: Optional[str] = None
+        self.eruption_log: List[Dict[str, Any]] = []
+
     def _make_event(
         self,
         time_years: float,
@@ -123,6 +151,14 @@ class EarthquakeSimulator:
             event["y"] = float(y)
 
         return event
+
+    def _recent_events(self, window_days: float) -> List[Dict[str, Any]]:
+        window_years = float(window_days) / 365.0
+        return [
+            e
+            for e in self.events
+            if 0.0 <= self.current_time - float(e["time_years"]) <= window_years
+        ]
 
     # ----------------------------
     # Simulation methods
@@ -196,6 +232,83 @@ class EarthquakeSimulator:
             return None
         return float(self.inverse_cumulative_intensity(u_next))
 
+    # ----------------------------
+    # Eruption logic
+    # ----------------------------
+
+    def volcano_status(self) -> Dict[str, Any]:
+        short_events = self._recent_events(self.short_window_days)
+        long_events = self._recent_events(self.long_window_days)
+
+        short_count = len(short_events)
+        long_count = len(long_events)
+
+        short_rate = short_count / (self.short_window_days / 365.0)
+        long_rate = long_count / (self.long_window_days / 365.0)
+
+        recent_magnitudes = [float(e["magnitude"]) for e in short_events]
+        max_recent_mag = max(recent_magnitudes) if recent_magnitudes else 0.0
+        mean_recent_mag = float(np.mean(recent_magnitudes)) if recent_magnitudes else 0.0
+
+        rate_ratio = short_rate / max(long_rate, 1e-12)
+
+        cooldown_years = self.eruption_cooldown_days / 365.0
+        cooldown_active = (self.current_time - self.last_eruption_time) < cooldown_years
+
+        return {
+            "current_time_years": float(self.current_time),
+            "short_window_days": float(self.short_window_days),
+            "long_window_days": float(self.long_window_days),
+            "short_count": int(short_count),
+            "long_count": int(long_count),
+            "short_rate": float(short_rate),
+            "long_rate": float(long_rate),
+            "rate_ratio": float(rate_ratio),
+            "max_recent_mag": float(max_recent_mag),
+            "mean_recent_mag": float(mean_recent_mag),
+            "cooldown_active": bool(cooldown_active),
+            "last_eruption_time_years": None if not np.isfinite(self.last_eruption_time) else float(self.last_eruption_time),
+            "last_eruption_type": self.last_eruption_type,
+        }
+
+    def check_for_eruption(self) -> Optional[Dict[str, Any]]:
+        """
+        Check whether recent seismicity is high enough to trigger an eruption.
+
+        Returns a dict describing the eruption if one is triggered, otherwise None.
+        """
+        status = self.volcano_status()
+
+        if status["cooldown_active"]:
+            return None
+        if status["short_count"] < self.min_short_count:
+            return None
+        if status["rate_ratio"] < self.rate_ratio_threshold:
+            return None
+
+        max_mag = status["max_recent_mag"]
+        if max_mag >= self.pdc_mag_threshold:
+            eruption_type = "ash_and_pdc"
+        elif max_mag >= self.ash_mag_threshold:
+            eruption_type = "ash"
+        else:
+            return None
+
+        record = {
+            "eruption_type": eruption_type,
+            "time_years": float(self.current_time),
+            "short_count": status["short_count"],
+            "long_count": status["long_count"],
+            "rate_ratio": status["rate_ratio"],
+            "max_recent_mag": status["max_recent_mag"],
+            "mean_recent_mag": status["mean_recent_mag"],
+        }
+
+        self.last_eruption_time = float(self.current_time)
+        self.last_eruption_type = eruption_type
+        self.eruption_log.append(record)
+        return record
+
     def get_statistics(self) -> Dict[str, Any]:
         magnitudes = [e["magnitude"] for e in self.events]
         seismic_moments = [e["seismic_moment_Nm"] for e in self.events]
@@ -210,6 +323,9 @@ class EarthquakeSimulator:
             "max_magnitude": float(np.max(magnitudes)) if magnitudes else None,
             "total_seismic_moment_Nm": float(np.sum(seismic_moments)) if seismic_moments else 0.0,
             "current_rate": float(self.get_current_rate()),
+            "eruption_count": int(len(self.eruption_log)),
+            "last_eruption_type": self.last_eruption_type,
+            "last_eruption_time_years": None if not np.isfinite(self.last_eruption_time) else float(self.last_eruption_time),
         }
 
     def serialize_state(self) -> Dict[str, Any]:
@@ -221,10 +337,20 @@ class EarthquakeSimulator:
             "b": self.b,
             "duration_years": self.duration_years,
             "seed": self.seed,
+            "short_window_days": self.short_window_days,
+            "long_window_days": self.long_window_days,
+            "rate_ratio_threshold": self.rate_ratio_threshold,
+            "min_short_count": self.min_short_count,
+            "ash_mag_threshold": self.ash_mag_threshold,
+            "pdc_mag_threshold": self.pdc_mag_threshold,
+            "eruption_cooldown_days": self.eruption_cooldown_days,
             "current_time": self.current_time,
             "background_event_count": self.background_event_count,
             "aftershock_event_count": self.aftershock_event_count,
             "total_seismic_moment_Nm": self.total_seismic_moment_Nm,
+            "last_eruption_time": self.last_eruption_time,
+            "last_eruption_type": self.last_eruption_type,
+            "eruption_log": self.eruption_log,
             "events": self.events,
             "rng_state": copy.deepcopy(self.rng.bit_generator.state),
         }
@@ -238,10 +364,21 @@ class EarthquakeSimulator:
         self.duration_years = float(state["duration_years"])
         self.seed = state.get("seed", None)
 
+        self.short_window_days = float(state["short_window_days"])
+        self.long_window_days = float(state["long_window_days"])
+        self.rate_ratio_threshold = float(state["rate_ratio_threshold"])
+        self.min_short_count = int(state["min_short_count"])
+        self.ash_mag_threshold = float(state["ash_mag_threshold"])
+        self.pdc_mag_threshold = float(state["pdc_mag_threshold"])
+        self.eruption_cooldown_days = float(state["eruption_cooldown_days"])
+
         self.current_time = float(state["current_time"])
         self.background_event_count = int(state["background_event_count"])
         self.aftershock_event_count = int(state["aftershock_event_count"])
         self.total_seismic_moment_Nm = float(state["total_seismic_moment_Nm"])
+        self.last_eruption_time = float(state["last_eruption_time"])
+        self.last_eruption_type = state["last_eruption_type"]
+        self.eruption_log = list(state["eruption_log"])
         self.events = list(state["events"])
 
         self.rng = np.random.default_rng()

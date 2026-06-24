@@ -17,16 +17,6 @@ from typing import Tuple, List
 
 R = random.Random()
 
-# Base hazard catalog (this can be extended)
-EXP_HAZARDS = [
-    {"name": "Ashfall", "damage": 60, "pattern": "diamond", "spread": 1, "base": 1.0},
-    {"name": "Lava Spur", "damage": 110, "pattern": "square", "spread": 1, "base": 0.9},
-    {"name": "Bomb Shower", "damage": 140, "pattern": "cross", "spread": 2, "base": 0.8},
-    {"name": "Pyroclastic Surge", "damage": 180, "pattern": "diamond", "spread": 2, "base": 0.7},
-    {"name": "Mudflow", "damage": 120, "pattern": "line", "spread": 4, "base": 0.6},
-    {"name": "Radius Blast", "damage": 220, "pattern": "square", "spread": 1, "base": 0.5},
-]
-
 
 class VolcanoExpansion:
     def __init__(self, rng_seed: int | None = None):
@@ -73,11 +63,11 @@ class VolcanoExpansion:
         volcano_pos: Tuple[int, int],
         island_mask: List[List[bool]],
         round_number: int = 1,
-        weights: dict | None = None,
+        hazard_specs: dict[str, dict] | None = None,
     ):
         """Select a hazard and an epicenter.
 
-        If `weights` is provided it should map hazard name -> multiplier (float).
+        If `weight` is provided it should map hazard name -> multiplier (float).
         Returns (hazard_spec_dict, epicenter, probs) where `probs` is a dict of hazard name -> probability.
         """
         rows = len(island_mask)
@@ -85,20 +75,19 @@ class VolcanoExpansion:
         land_cells = [(x, y) for y in range(rows) for x in range(cols) if island_mask[y][x]]
         if not land_cells:
             raise RuntimeError("No land available for hazard epicenter")
+        # require hazard_specs from the base game — expansion does not ship a catalog
+        if not hazard_specs:
+            raise RuntimeError("volcano_expansion.choose_hazard requires hazard_specs from the game settings")
 
-        # precompute per-hazard per-cell weights
+        # precompute per-hazard per-cell weights using the provided specs and optional multipliers
         hazard_cell_weights: dict[str, list[float]] = {}
         hazard_totals: dict[str, float] = {}
-        for spec in EXP_HAZARDS:
-            name = spec["name"]
-            base = spec.get("base", 1.0)
-            override = float(weights.get(name, 1.0)) if weights else 1.0
+        for name, attrs in hazard_specs.values():
             cells_w: list[float] = []
             total = 0.0
             for c in land_cells:
                 dnorm = self._distance_norm(volcano_pos, c, island_mask)
-                # distance modifier per hazard name
-                ln = name.lower()
+                ln = (name or "").lower()
                 if ln.startswith("ash"):
                     modifier = 0.6 + 1.4 * dnorm
                 elif "pyro" in ln or "radius" in ln:
@@ -108,7 +97,7 @@ class VolcanoExpansion:
                 else:
                     modifier = 1.0
                 round_boost = 1.0 + max(0.0, (round_number - 1)) * 0.03
-                w = max(0.0, base * modifier * round_boost) * override
+                w = max(0.0, 1.0 * modifier * round_boost) * attrs.get("weight", 1.0)
                 cells_w.append(w)
                 total += w
             hazard_cell_weights[name] = cells_w
@@ -119,8 +108,8 @@ class VolcanoExpansion:
         probs: dict[str, float] = {}
         if total_all <= 0:
             # fallback uniform
-            for spec in EXP_HAZARDS:
-                probs[spec["name"]] = 1.0 / len(EXP_HAZARDS)
+            for name, attrs in hazard_specs.items():
+                probs[name] = 1.0 / len(hazard_specs.get(name, {}).get("weight", 1.0))
         else:
             for name, t in hazard_totals.items():
                 probs[name] = t / total_all
@@ -131,7 +120,7 @@ class VolcanoExpansion:
         if sum(hazard_weights) <= 0:
             chosen_name = self.rng.choice(hazard_names)
         else:
-            chosen_name = self.rng.choices(hazard_names, weights=hazard_weights, k=1)[0]
+            chosen_name = self.rng.choices(hazard_names, weights=[h.get("weight", 1.0) for h in hazard_specs.values()], k=1)[0]
 
         # sample epicenter for chosen hazard using per-cell weights
         chosen_cells = hazard_cell_weights[chosen_name]
@@ -140,8 +129,9 @@ class VolcanoExpansion:
         else:
             epicenter = self.rng.choices(land_cells, weights=chosen_cells, k=1)[0]
 
-        # find spec dict
-        for spec in EXP_HAZARDS:
-            if spec["name"] == chosen_name:
+        # find spec dict from provided specs
+        for spec in hazard_specs:
+            if spec.get("name") == chosen_name:
                 return spec, epicenter, probs
-        return EXP_HAZARDS[-1], epicenter, probs
+        # fallback
+        return list(hazard_specs.values())[-1], epicenter, probs
