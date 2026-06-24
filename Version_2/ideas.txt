@@ -1,0 +1,14 @@
+Island map with coarse grid, e.g. 5x5 squares with some designated as "land" of an island. 
+A vent is designated by the game but not revealed to the players, and is assigned the highest topography.
+Topography is defined on the island as a series of floats between 0 and 1, with higher topography closer to 1 and sea level at 0. 
+Topography controls where some hazards will go.
+A wind direction is defined at the start of each round which controls the direction some hazards will go
+
+Intensity:
+An underlying intensity meaesure is defined, which is exponential with time and starts off low. 
+Controls how many random earthquakes are generated, as outlined below in Hazards section
+
+Hazards:
+Earthquakes - Magnitude defined by a probability density function with size related to magnitude with a log normal relationship. Can occur anywhere on the island. Number of earthquakes defined by intensity 
+Ash - Always starting at the defined vent. Controlled by the wind direction. Will only occur if an earthquake is above a given magnitude, e.g. 4.0. Number of squares it covers scales with how far above threshold the earthquake is
+Pyroclastic Density Current (PDC) - Always starting at the defined vent. Controlled by topography after random first move. Will only occur if an earthquake is above a given magnitude, e.g. 6.0. Number of squares it covers scales with how far above threshold the earthquake is
