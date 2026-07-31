@@ -2,20 +2,12 @@ import random
 import math
 
 
-
 class Volcano:
 
 
     def __init__(
 
         self,
-
-        caldera_position=(500,500),
-
-
-        #
-        # Initial state
-        #
 
         initial_pressure=0.25,
 
@@ -30,55 +22,46 @@ class Volcano:
 
 
         #
-        # Pressure parameters
+        # Pressure
         #
 
-        recharge_min=0.005,
+        recharge_min=0.004,
 
-        recharge_max=0.01,
+        recharge_max=0.008,
 
-        pressure_loss_max=0.01,
-
-
-        #
-        # Earthquake parameters
-        #
-
-        earthquake_multiplier=40,
+        pressure_loss_max=0.008,
 
 
         #
-        # Fracture parameters
+        # Earthquakes
+        #
+
+        earthquake_multiplier=50,
+
+
+        #
+        # Fracture
         #
 
         fracture_damage_min=0.01,
 
-        fracture_damage_max=0.06,
+        fracture_damage_max=0.04,
 
-        fracture_healing=0.96,
+        fracture_healing=0.94,
 
 
         #
-        # Eruption parameters
+        # Eruption
         #
 
         eruption_pressure_threshold=0.8,
 
-        fracture_pressure_effect=0.3,
+        fracture_pressure_effect=0.4,
 
         minimum_pressure=0.35
 
 
     ):
-
-
-        # =================================================
-        # LOCATION
-        # =================================================
-
-
-        self.caldera_position = caldera_position
-
 
 
         # =================================================
@@ -95,8 +78,6 @@ class Volcano:
 
         self.eruption_type = None
 
-        self.eruption_location = None
-
 
 
         # =================================================
@@ -107,8 +88,9 @@ class Volcano:
         self.time_scale = time_scale
 
 
-
+        #
         # Pressure
+        #
 
         self.recharge_min = recharge_min
 
@@ -118,13 +100,17 @@ class Volcano:
 
 
 
+        #
         # Earthquakes
+        #
 
         self.earthquake_multiplier = earthquake_multiplier
 
 
 
+        #
         # Fracture
+        #
 
         self.fracture_damage_min = fracture_damage_min
 
@@ -134,7 +120,9 @@ class Volcano:
 
 
 
+        #
         # Eruption
+        #
 
         self.eruption_pressure_threshold = eruption_pressure_threshold
 
@@ -185,7 +173,6 @@ class Volcano:
         )
 
 
-
         self.pressure += (
 
             recharge - loss
@@ -219,22 +206,16 @@ class Volcano:
 
 
         #
-        # Pressure and fracture both contribute
+        # Same relationship as original:
+        #
+        # high pressure = many earthquakes
         #
 
         rate = (
 
-            0.3
+            self.pressure ** 3
 
-            +
-
-            self.pressure ** 2
-
-            +
-
-            0.5 * self.fracture
-
-        ) * self.earthquake_multiplier * self.time_scale
+        ) * self.earthquake_multiplier
 
 
 
@@ -264,9 +245,7 @@ class Volcano:
         )
 
 
-
         earthquakes = []
-
 
 
         for i in range(number):
@@ -274,18 +253,7 @@ class Volcano:
 
             earthquakes.append(
 
-                {
-
-                    "magnitude":
-
-                    self.generate_magnitude(),
-
-
-                    "location":
-
-                    self.generate_earthquake_location()
-
-                }
+                self.generate_magnitude()
 
             )
 
@@ -295,7 +263,7 @@ class Volcano:
 
 
     # =====================================================
-    # MAGNITUDE GENERATION
+    # GUTENBERG-RICHTER MAGNITUDE
     # =====================================================
 
 
@@ -325,15 +293,18 @@ class Volcano:
         )
 
 
+        magnitude = min(
+
+            magnitude,
+
+            6
+
+        )
+
+
         return round(
 
-            min(
-
-                magnitude,
-
-                6
-
-            ),
+            magnitude,
 
             2
 
@@ -342,52 +313,6 @@ class Volcano:
 
 
     # =====================================================
-    # EARTHQUAKE LOCATION
-    # =====================================================
-
-
-    def generate_earthquake_location(self):
-
-
-        x0, y0 = self.caldera_position
-
-
-
-        #
-        # Most earthquakes close to caldera
-        #
-
-        distance = random.expovariate(
-
-            1/100
-
-        )
-
-
-        angle = random.uniform(
-
-            0,
-
-            2*math.pi
-
-        )
-
-
-        x = x0 + math.cos(angle) * distance
-
-        y = y0 + math.sin(angle) * distance
-
-
-
-        return (
-
-            round(x),
-
-            round(y)
-
-        )
-
-        # =====================================================
     # FRACTURE UPDATE
     # =====================================================
 
@@ -401,23 +326,17 @@ class Volcano:
     ):
 
 
-        for earthquake in earthquakes:
-
-
-            magnitude = earthquake["magnitude"]
-
+        for magnitude in earthquakes:
 
 
             #
-            # Reduced earthquake damage
-            #
-            # Magnitude squared gives a smoother
-            # increase than 10^magnitude
+            # Same damage as before,
+            # divided by 100 because fracture is 0-1
             #
 
             damage = (
 
-                magnitude ** 2
+                10 ** magnitude
 
             ) * random.uniform(
 
@@ -429,42 +348,7 @@ class Volcano:
 
 
 
-            self.fracture += (
-
-                damage
-
-                *
-
-                self.time_scale
-
-            )
-
-
-
-        #
-        # Background crustal stress
-        #
-        # Allows fracture to develop independently
-        #
-
-        background_damage = random.uniform(
-
-            0,
-
-            0.001
-
-        )
-
-
-        self.fracture += (
-
-            background_damage
-
-            *
-
-            self.time_scale
-
-        )
+            self.fracture += damage
 
 
 
@@ -472,15 +356,7 @@ class Volcano:
         # Slow healing
         #
 
-        self.fracture *= (
-
-            self.fracture_healing
-
-            **
-
-            self.time_scale
-
-        )
+        self.fracture *= self.fracture_healing
 
 
 
@@ -509,7 +385,7 @@ class Volcano:
 
 
         #
-        # Fracture reduces required pressure
+        # Fracture lowers pressure needed
         #
 
         threshold = (
@@ -527,7 +403,6 @@ class Volcano:
         )
 
 
-
         threshold = max(
 
             threshold,
@@ -537,10 +412,6 @@ class Volcano:
         )
 
 
-
-        #
-        # Insufficient pressure
-        #
 
         if self.pressure < threshold:
 
@@ -579,7 +450,6 @@ class Volcano:
         )
 
 
-
         if random.random() < probability:
 
 
@@ -589,11 +459,7 @@ class Volcano:
             self.eruption_type = self.choose_eruption_type()
 
 
-            self.set_eruption_location()
-
-
             self.set_eruption_properties()
-
 
 
             return True
@@ -613,8 +479,7 @@ class Volcano:
 
 
         #
-        # High pressure, low fracture:
-        # sealed explosive system
+        # High pressure + closed system
         #
 
         if (
@@ -623,7 +488,7 @@ class Volcano:
 
             and
 
-            self.fracture < 0.5
+            self.fracture < 0.3
 
         ):
 
@@ -633,8 +498,7 @@ class Volcano:
 
 
         #
-        # High fracture:
-        # open lava pathways
+        # Open fractures = lava dominated
         #
 
         elif self.fracture > 0.7:
@@ -648,76 +512,6 @@ class Volcano:
 
 
             return "mixed"
-
-
-
-    # =====================================================
-    # ERUPTION LOCATION
-    # =====================================================
-
-
-    def set_eruption_location(self):
-
-
-        x0, y0 = self.caldera_position
-
-
-
-        #
-        # Most eruptions occur at caldera
-        #
-
-        if random.random() < 0.9:
-
-
-            self.eruption_location = (
-
-                x0,
-
-                y0
-
-            )
-
-
-            return
-
-
-
-        #
-        # Rare flank eruption
-        #
-
-        distance = random.uniform(
-
-            20,
-
-            100
-
-        )
-
-
-        angle = random.uniform(
-
-            0,
-
-            2*math.pi
-
-        )
-
-
-        x = x0 + math.cos(angle)*distance
-
-        y = y0 + math.sin(angle)*distance
-
-
-
-        self.eruption_location = (
-
-            round(x),
-
-            round(y)
-
-        )
 
 
 
@@ -738,9 +532,8 @@ class Volcano:
         )
 
 
-
         #
-        # Lava radius
+        # Lava
         #
 
         self.lava_radius = int(
@@ -766,9 +559,8 @@ class Volcano:
         )
 
 
-
         #
-        # Ash radius
+        # Ash
         #
 
         self.ash_radius = int(
@@ -789,11 +581,6 @@ class Volcano:
 
         )
 
-
-
-        #
-        # Lava intensity
-        #
 
         self.lava_intensity = int(
 
@@ -817,11 +604,6 @@ class Volcano:
 
         )
 
-
-
-        #
-        # Ash intensity
-        #
 
         self.ash_intensity = int(
 
@@ -851,23 +633,14 @@ class Volcano:
     def release_pressure(self):
 
 
-        #
-        # Do not completely empty chamber
-        #
-
         self.pressure *= random.uniform(
 
-            0.3,
+            0.1,
 
-            0.6
+            0.4
 
         )
 
-
-
-        #
-        # Some fractures remain
-        #
 
         self.fracture *= random.uniform(
 
@@ -878,13 +651,9 @@ class Volcano:
         )
 
 
-
         self.erupted = False
 
         self.eruption_type = None
-
-        self.eruption_location = None
-
 
 
         self.lava_radius = 0
@@ -894,3 +663,249 @@ class Volcano:
         self.lava_intensity = 0
 
         self.ash_intensity = 0
+
+
+
+# =====================================================
+# SIMULATION
+# =====================================================
+
+volcano = Volcano()
+
+
+pressure_history = []
+
+fracture_history = []
+
+eruption_days = []
+
+
+
+for day in range(1,366):
+
+
+    #
+    # Update volcano
+    #
+
+    volcano.update_pressure()
+
+
+    earthquakes = volcano.generate_earthquakes()
+
+
+    volcano.update_fracture(
+
+        earthquakes
+
+    )
+
+
+    eruption = volcano.check_eruption()
+
+
+    #
+    # Store histories
+    #
+
+    pressure_history.append(
+
+        volcano.pressure
+
+    )
+
+
+    fracture_history.append(
+
+        volcano.fracture
+
+    )
+
+
+    #
+    # Print daily summary
+    #
+
+    print(
+
+        f"""
+Day: {day}
+Pressure: {volcano.pressure*100:.1f}%
+Earthquakes: {len(earthquakes)}
+Largest magnitude: {max(earthquakes, default=0):.2f}
+Fracture: {volcano.fracture*100:.1f}%
+"""
+
+    )
+
+    #
+    # Eruption
+    #
+
+    if eruption:
+
+
+        eruption_days.append(
+
+            day
+
+        )
+
+
+        print(
+
+            "ERUPTION!"
+
+        )
+
+
+        print(
+
+            "Type:",
+
+            volcano.eruption_type
+
+        )
+
+
+        print(
+
+            "Lava radius:",
+
+            volcano.lava_radius
+
+        )
+
+
+        print(
+
+            "Ash radius:",
+
+            volcano.ash_radius
+
+        )
+
+
+        volcano.release_pressure()
+
+
+# =====================================================
+# PLOTS
+# =====================================================
+
+import matplotlib.pyplot as plt
+
+
+days = range(
+
+    1,
+
+    len(pressure_history) + 1
+
+)
+
+
+fig, axes = plt.subplots(
+
+    2,
+
+    1,
+
+    figsize=(10,8),
+
+    sharex=True
+
+)
+
+
+#
+# Pressure
+#
+
+axes[0].plot(
+
+    days,
+
+    pressure_history,
+
+    label="Pressure"
+
+)
+
+
+for eruption_day in eruption_days:
+
+    axes[0].axvline(
+
+        eruption_day,
+
+        linestyle="--"
+
+    )
+
+
+axes[0].set_title(
+
+    "Magma Pressure"
+
+)
+
+axes[0].set_ylabel(
+
+    "Pressure"
+
+)
+
+axes[0].grid()
+
+
+#
+# Fracture
+#
+
+axes[1].plot(
+
+    days,
+
+    fracture_history,
+
+    label="Fracture"
+
+)
+
+
+for eruption_day in eruption_days:
+
+    axes[1].axvline(
+
+        eruption_day,
+
+        linestyle="--"
+
+    )
+
+
+axes[1].set_title(
+
+    "Crustal Fracture"
+
+)
+
+axes[1].set_xlabel(
+
+    "Day"
+
+)
+
+axes[1].set_ylabel(
+
+    "Fracture"
+
+)
+
+axes[1].grid()
+
+
+plt.tight_layout()
+
+plt.show()

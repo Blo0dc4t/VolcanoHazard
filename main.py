@@ -1,239 +1,168 @@
-import pygame
+from world import World
 
-import constants
-
-from game_map import GameMap
-from volcano import Volcano
-from earthquakes import EarthquakeGenerator
+import matplotlib.pyplot as plt
 
 
-pygame.init()
+
+world = World()
+
+
+
+eruption_days=[]
+
+
+
+for day in range(365):
+
+
+    result = world.update()
+
+
+
+#     print(
+
+#         f"""
+# Day:
+# {world.day}
+
+# Pressure:
+# {world.volcano.pressure*100:.1f}%
+
+# Fracture:
+# {world.volcano.fracture*100:.1f}%
+
+# Earthquakes:
+# {len(result["earthquakes"])}
+
+# """
+
+#     )
+
+
+
+    if result["eruption"]:
+
+
+        eruption_days.append(
+
+            world.day
+
+        )
 
 
 # =====================================================
-# FULLSCREEN DISPLAY
+# PRESSURE / FRACTURE PLOTS
 # =====================================================
 
-screen = pygame.display.set_mode(
 
-    (0, 0),
+days=range(
 
-    pygame.FULLSCREEN
+    len(world.pressure_history)
 
 )
 
-WIDTH, HEIGHT = screen.get_size()
 
-pygame.display.set_caption(
 
-    "Volcano Hazard Simulation"
+fig,axes=plt.subplots(
+
+    2,
+
+    1,
+
+    figsize=(10,8),
+
+    sharex=True
 
 )
 
-clock = pygame.time.Clock()
 
 
-# =====================================================
-# DISPLAY SCALING
-# =====================================================
+axes[0].plot(
 
-# Width available for the map (excluding side panel)
+    days,
 
-MAP_WIDTH = WIDTH - constants.PANEL_WIDTH
+    world.pressure_history
 
-tile_width = MAP_WIDTH / constants.COLS
+)
 
-tile_height = HEIGHT / constants.ROWS
 
+for d in eruption_days:
 
-# =====================================================
-# CREATE GAME OBJECTS
-# =====================================================
+    axes[0].axvline(
 
-game_map = GameMap()
+        d,
 
-volcano = Volcano()
-
-earthquakes = EarthquakeGenerator()
-
-
-# =====================================================
-# GAME STATE
-# =====================================================
-
-running = True
-
-day = 0
-
-events = []
-
-
-# =====================================================
-# MAIN LOOP
-# =====================================================
-
-while running:
-
-
-    for event in pygame.event.get():
-
-
-        if event.type == pygame.QUIT:
-
-            running = False
-
-
-        elif event.type == pygame.KEYDOWN:
-
-
-            # -----------------------------------------
-            # Exit
-            # -----------------------------------------
-
-            if event.key == pygame.K_ESCAPE:
-
-                running = False
-
-
-            # -----------------------------------------
-            # Change map view
-            # -----------------------------------------
-
-            elif event.key == pygame.K_LEFT:
-
-                game_map.change_view(-1)
-
-
-            elif event.key == pygame.K_RIGHT:
-
-                game_map.change_view(1)
-
-
-            # -----------------------------------------
-            # Advance one timestep
-            # -----------------------------------------
-
-            elif event.key == pygame.K_RETURN:
-
-
-                day += 1
-
-                events = []
-
-
-                #
-                # Volcano update
-                #
-
-                volcano.update()
-
-
-                if volcano.erupted:
-
-                    events.append("Volcanic eruption")
-
-
-                #
-                # Earthquakes
-                #
-
-                before = len(
-
-                    earthquakes.events
-
-                )
-
-
-                earthquakes.generate(
-
-                    volcano.pressure,
-
-                    game_map.caldera
-
-                )
-
-
-                after = len(
-
-                    earthquakes.events
-
-                )
-
-
-                if after > before:
-
-
-                    quake = earthquakes.events[-1]
-
-
-                    events.append(
-
-                        f"M{quake.magnitude:.1f} earthquake"
-
-                    )
-
-
-                #
-                # Update earthquake catalogue
-                #
-
-                earthquakes.update()
-
-
-                #
-                # Apply hazard damage
-                #
-
-                game_map.apply_damage()
-
-
-                print(
-
-                    f"DAY {day}"
-
-                )
-
-
-    # =================================================
-    # DRAW
-    # =================================================
-
-    screen.fill(
-
-        constants.BLACK
+        linestyle="--"
 
     )
 
 
-    game_map.draw(
 
-        screen,
+axes[0].set_title(
 
-        earthquakes.events,
+    "Magma Pressure"
 
-        tile_width,
+)
 
-        tile_height,
 
-        day,
+axes[0].set_ylabel(
 
-        volcano,
+    "Pressure"
 
-        events,
+)
 
-        show_caldera=True
+
+axes[0].grid()
+
+
+
+axes[1].plot(
+
+    days,
+
+    world.fracture_history
+
+)
+
+
+
+for d in eruption_days:
+
+    axes[1].axvline(
+
+        d,
+
+        linestyle="--"
 
     )
 
 
-    pygame.display.flip()
+
+axes[1].set_title(
+
+    "Crustal Fracture"
+
+)
 
 
-    clock.tick(
+axes[1].set_xlabel(
 
-        constants.FPS
+    "Day"
 
-    )
+)
 
 
-pygame.quit()
+axes[1].set_ylabel(
+
+    "Fracture"
+
+)
+
+
+axes[1].grid()
+
+
+
+plt.tight_layout()
+
+plt.show()
