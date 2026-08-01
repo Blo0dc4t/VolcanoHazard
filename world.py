@@ -1,4 +1,8 @@
+import random
+import math
+
 from volcano import Volcano
+from terrain import Terrain
 
 
 
@@ -30,22 +34,92 @@ class World:
 
 
         #
+        # Terrain
+        #
+
+        print("creating terrain...")
+
+        self.terrain = Terrain(
+
+            width,
+
+            height,
+
+            cell_size=4,
+
+        )
+
+        self.grid_width = self.terrain.grid_width
+        self.grid_height = self.terrain.grid_height
+
+
+        self.grid = [
+
+            [
+
+                {
+
+                    "building":None,
+
+                    "lava":False,
+
+                    "ash":0
+
+                }
+
+                for x in range(self.grid_width)
+
+            ]
+
+            for y in range(self.grid_height)
+
+        ]
+
+
+        #
         # Volcano
         #
 
+        print("creating volcano...")
+
         self.volcano = Volcano(
 
-            caldera_position=(
-
-                width//2,
-
-                height//2
-
-            ),
+            caldera_position=self.terrain.caldera_position,
 
             time_scale=1,
 
         )
+
+
+        #
+        # Wind
+        #
+
+        self.wind_direction = random.uniform(
+
+            0,
+
+            2*math.pi
+
+        )
+
+
+        self.wind_speed = random.uniform(
+
+            0.5,
+
+            2.0
+
+        )
+
+
+        #
+        # Active hazards
+        #
+
+        self.ash_plumes = []
+
+        self.lava_flows = []
 
 
 
@@ -54,6 +128,8 @@ class World:
         #
 
         self.earthquakes = []
+
+        self.recent_earthquakes = []
 
         self.eruptions = []
 
@@ -118,6 +194,7 @@ class World:
 
         )
 
+        self.recent_earthquakes = earthquakes
 
 
         #
@@ -190,16 +267,29 @@ class World:
 
             )
 
+            self.generate_ash_plume(
+
+            eruption_event
+
+            )
+
+
+            self.generate_lava_flow(
+
+                eruption_event
+
+            )
+
 
             #
             # Reset volcano after eruption
             #
+
+            self.volcano.release_pressure()
             
             print(self.eruptions[-1]["type"])
-            self.volcano.release_pressure()
-            print(self.eruptions[-1]["type"])
 
-
+        
         return {
 
 
@@ -213,6 +303,195 @@ class World:
 
         }
 
+    def generate_ash_plume(
+
+        self,
+
+        eruption
+
+    ):
+
+
+        x0,y0 = eruption["location"]
+
+
+        distance = int(
+
+            eruption["ash_intensity"]
+
+            *
+
+            self.wind_speed
+
+            *
+
+            0.5
+
+        )
+
+
+        plume=[]
+
+
+        for i in range(distance):
+
+
+            spread = i * 0.05
+
+
+            x = (
+
+                x0
+
+                +
+
+                math.cos(self.wind_direction)
+
+                *
+
+                i
+
+                +
+
+                random.uniform(
+                    -spread,
+                    spread
+                )
+
+            )
+
+
+            y = (
+
+                y0
+
+                +
+
+                math.sin(self.wind_direction)
+
+                *
+
+                i
+
+                +
+
+                random.uniform(
+                    -spread,
+                    spread
+                )
+
+            )
+
+
+            plume.append(
+
+                (
+
+                    round(x),
+
+                    round(y)
+
+                )
+
+            )
+
+
+        self.ash_plumes.append(
+
+            plume
+
+        )
+
+    def generate_lava_flow(self, eruption):
+
+
+        x,y = eruption["location"]
+
+
+        gx = int(
+            x / self.terrain.cell_size
+        )
+
+        gy = int(
+            y / self.terrain.cell_size
+        )
+
+
+        flow=[]
+
+
+        length = int(
+
+            eruption["lava_intensity"]
+
+            *
+
+            0.5
+
+        )
+
+
+
+        current=(gx,gy)
+
+
+
+        for i in range(length):
+
+
+            x,y=current
+
+
+            flow.append(current)
+
+
+
+            neighbours=[
+
+                (x+1,y),
+                (x-1,y),
+                (x,y+1),
+                (x,y-1)
+
+            ]
+
+
+            neighbours=[
+
+                p for p in neighbours
+
+                if
+
+                0 <= p[0] < self.grid_width
+
+                and
+
+                0 <= p[1] < self.grid_height
+
+            ]
+
+
+
+            if not neighbours:
+
+                break
+
+
+
+            current=min(
+
+                neighbours,
+
+                key=lambda p:
+
+                self.terrain.height_map[p[1],p[0]]
+
+            )
+
+
+
+        self.lava_flows.append(flow)
+        
 
     # =================================================
     # DISTANCE FUNCTION

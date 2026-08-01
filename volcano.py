@@ -725,7 +725,6 @@ class Volcano:
     # ERUPTION SIZE
     # =====================================================
 
-
     def set_eruption_properties(self):
 
 
@@ -736,59 +735,6 @@ class Volcano:
             1.3
 
         )
-
-
-
-        #
-        # Lava radius
-        #
-
-        self.lava_radius = int(
-
-            (
-
-                5
-
-                +
-
-                self.pressure * 30
-
-                +
-
-                self.fracture * 30
-
-            )
-
-            *
-
-            variation
-
-        )
-
-
-
-        #
-        # Ash radius
-        #
-
-        self.ash_radius = int(
-
-            (
-
-                10
-
-                +
-
-                self.pressure * 80
-
-            )
-
-            *
-
-            variation
-
-        )
-
 
 
         #
@@ -818,7 +764,6 @@ class Volcano:
         )
 
 
-
         #
         # Ash intensity
         #
@@ -841,6 +786,31 @@ class Volcano:
 
         )
 
+
+        #
+        # Extent controlled by intensity
+        #
+
+        self.lava_radius = int(
+
+            self.lava_intensity
+
+            *
+
+            0.5
+
+        )
+
+
+        self.ash_radius = int(
+
+            self.ash_intensity
+
+            *
+
+            1.5
+
+        )
 
 
     # =====================================================

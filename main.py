@@ -1,168 +1,166 @@
+import pygame
+
 from world import World
-
-import matplotlib.pyplot as plt
-
+from renderer import Renderer
 
 
-world = World()
+#
+# Window size
+#
+
+WORLD_WIDTH = 1000
+WORLD_HEIGHT = 1000
+
+SIDEBAR_WIDTH = 250
+
+
+pygame.init()
+
+
+screen = pygame.display.set_mode(
+
+    (
+
+        WORLD_WIDTH + SIDEBAR_WIDTH,
+
+        WORLD_HEIGHT
+
+    )
+
+)
+
+
+pygame.display.set_caption(
+
+    "Volcano Simulation"
+
+)
+
+
+clock = pygame.time.Clock()
 
 
 
-eruption_days=[]
+#
+# Create world
+#
+
+world = World(
+
+    WORLD_WIDTH,
+
+    WORLD_HEIGHT
+
+)
 
 
 
-for day in range(365):
+#
+# Create renderer
+#
 
+renderer = Renderer(
 
-    result = world.update()
+    world,
 
+    SIDEBAR_WIDTH
 
-
-#     print(
-
-#         f"""
-# Day:
-# {world.day}
-
-# Pressure:
-# {world.volcano.pressure*100:.1f}%
-
-# Fracture:
-# {world.volcano.fracture*100:.1f}%
-
-# Earthquakes:
-# {len(result["earthquakes"])}
-
-# """
-
-#     )
+)
 
 
 
-    if result["eruption"]:
+running = True
 
 
-        eruption_days.append(
+day_timer = 0
 
-            world.day
+
+
+#
+# Store daily statistics
+#
+
+daily_events = {
+
+    "earthquakes":0,
+
+    "eruptions":0
+
+}
+
+
+
+while running:
+
+
+    for event in pygame.event.get():
+
+
+        if event.type == pygame.QUIT:
+
+            running=False
+
+
+
+    #
+    # Update simulation
+    #
+
+    day_timer += 1
+
+
+    if day_timer >= 10:
+
+
+        result = world.update()
+
+
+        day_timer=0
+
+
+
+        #
+        # Update sidebar statistics
+        #
+
+        daily_events["earthquakes"] = len(
+
+            result["earthquakes"]
 
         )
 
 
-# =====================================================
-# PRESSURE / FRACTURE PLOTS
-# =====================================================
+        daily_events["eruptions"] = int(
 
+            result["eruption"]
 
-days=range(
-
-    len(world.pressure_history)
-
-)
+        )
 
 
 
-fig,axes=plt.subplots(
+        renderer.update_statistics(
 
-    2,
+            daily_events
 
-    1,
-
-    figsize=(10,8),
-
-    sharex=True
-
-)
+        )
 
 
 
-axes[0].plot(
+    #
+    # Draw
 
-    days,
+    renderer.draw(
 
-    world.pressure_history
-
-)
-
-
-for d in eruption_days:
-
-    axes[0].axvline(
-
-        d,
-
-        linestyle="--"
+        screen
 
     )
 
 
-
-axes[0].set_title(
-
-    "Magma Pressure"
-
-)
+    pygame.display.flip()
 
 
-axes[0].set_ylabel(
-
-    "Pressure"
-
-)
-
-
-axes[0].grid()
+    clock.tick(60)
 
 
 
-axes[1].plot(
-
-    days,
-
-    world.fracture_history
-
-)
-
-
-
-for d in eruption_days:
-
-    axes[1].axvline(
-
-        d,
-
-        linestyle="--"
-
-    )
-
-
-
-axes[1].set_title(
-
-    "Crustal Fracture"
-
-)
-
-
-axes[1].set_xlabel(
-
-    "Day"
-
-)
-
-
-axes[1].set_ylabel(
-
-    "Fracture"
-
-)
-
-
-axes[1].grid()
-
-
-
-plt.tight_layout()
-
-plt.show()
+pygame.quit()
