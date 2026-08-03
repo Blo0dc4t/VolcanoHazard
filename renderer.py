@@ -10,20 +10,86 @@ class Renderer:
 
         world,
 
-        sidebar_width
+        sidebar_fraction=0.2
 
     ):
 
+
         self.world = world
 
-        self.sidebar_width = sidebar_width
 
+        surface = pygame.display.get_surface()
+
+
+        self.screen_width = surface.get_width()
+
+        self.screen_height = surface.get_height()
+
+
+
+        #
+        # Sidebar
+        #
+
+        self.sidebar_width = int(
+
+            self.screen_width *
+
+            sidebar_fraction
+
+        )
+
+
+        self.map_width = (
+
+            self.screen_width
+
+            -
+
+            self.sidebar_width
+
+        )
+
+
+
+        #
+        # World scaling
+        #
+
+        self.scale_x = (
+
+            self.map_width /
+
+            self.world.width
+
+        )
+
+
+        self.scale_y = (
+
+            self.screen_height /
+
+            self.world.height
+
+        )
+
+
+
+        #
+        # Fonts
+        #
 
         self.font = pygame.font.SysFont(
 
             None,
 
-            28
+            max(
+
+                24,
+
+                int(self.screen_height*0.035)
+
+            )
 
         )
 
@@ -32,26 +98,39 @@ class Renderer:
 
             None,
 
-            22
+            max(
+
+                16,
+
+                int(self.screen_height*0.022)
+
+            )
 
         )
 
 
+
         self.statistics = {
 
-            "earthquakes":0,
+            "daily_earthquakes":0,
 
-            "eruptions":0
+            "daily_eruptions":0,
+
+            "accumulated_earthquakes":0,
+
+            "accumulated_eruptions":0
 
         }
+
 
 
         self.terrain_surface = self.create_terrain_surface()
 
 
-    # ====================================================
-    # UPDATE STATISTICS
-    # ====================================================
+
+    # =====================================================
+    # STATISTICS
+    # =====================================================
 
     def update_statistics(
 
@@ -64,17 +143,18 @@ class Renderer:
         self.statistics = statistics
 
 
+
     # =====================================================
-    # CREATE TERRAIN SURFACE
+    # TERRAIN
     # =====================================================
 
     def create_terrain_surface(self):
 
 
-        terrain=self.world.terrain
+        terrain = self.world.terrain
 
 
-        surface=pygame.Surface(
+        surface = pygame.Surface(
 
             (
 
@@ -87,29 +167,78 @@ class Renderer:
         )
 
 
-        for y in range(terrain.grid_height):
+        for y in range(
 
-            for x in range(terrain.grid_width):
+            terrain.grid_height
+
+        ):
 
 
-                h=terrain.height_map[y,x]
+            for x in range(
+
+                terrain.grid_width
+
+            ):
+
+
+                h = terrain.height_map[y,x]
+
 
 
                 if h < terrain.water_level:
 
-                    colour=(40,80,180)
+
+                    colour = (
+
+                        40,
+
+                        80,
+
+                        180
+
+                    )
+
 
                 elif h < 0.55:
 
-                    colour=(60,170,60)
+
+                    colour = (
+
+                        60,
+
+                        170,
+
+                        60
+
+                    )
+
 
                 elif h < terrain.mountain_level:
 
-                    colour=(130,100,60)
+
+                    colour = (
+
+                        130,
+
+                        100,
+
+                        60
+
+                    )
+
 
                 else:
 
-                    colour=(180,180,180)
+
+                    colour = (
+
+                        180,
+
+                        180,
+
+                        180
+
+                    )
 
 
 
@@ -137,6 +266,7 @@ class Renderer:
         return surface
 
 
+
     # =====================================================
     # DRAW EVERYTHING
     # =====================================================
@@ -150,31 +280,20 @@ class Renderer:
     ):
 
 
-        self.draw_terrain(
+        self.draw_terrain(screen)
 
-            screen
-
-        )
-
-
-        self.draw_volcano(
-
-            screen
-
-        )
-
-
-        self.draw_earthquakes(
-
-            screen
-
-        )
+        self.draw_structures(screen)
 
         self.draw_lava(screen)
 
         self.draw_ash(screen)
 
+        self.draw_volcano(screen)
+
+        self.draw_earthquakes(screen)
+
         self.draw_sidebar(screen)
+
 
 
     # =====================================================
@@ -190,9 +309,24 @@ class Renderer:
     ):
 
 
-        screen.blit(
+        scaled_surface = pygame.transform.scale(
 
             self.terrain_surface,
+
+            (
+
+                self.map_width,
+
+                self.screen_height
+
+            )
+
+        )
+
+
+        screen.blit(
+
+            scaled_surface,
 
             (
 
@@ -222,6 +356,7 @@ class Renderer:
         x,y = self.world.volcano.caldera_position
 
 
+
         pygame.draw.circle(
 
             screen,
@@ -238,9 +373,9 @@ class Renderer:
 
             (
 
-                x,
+                int(x*self.scale_x),
 
-                y
+                int(y*self.scale_y)
 
             ),
 
@@ -249,76 +384,401 @@ class Renderer:
         )
 
 
-    def draw_lava(self, screen):
+
+    # =====================================================
+    # LAVA CELLS
+    # =====================================================
+
+    def draw_lava(
+
+        self,
+
+        screen
+
+    ):
 
 
-        for flow in self.world.lava_flows:
+        cell = self.world.terrain.cell_size
 
 
-            for point in flow:
+
+        for y in range(
+
+            self.world.grid_height
+
+        ):
 
 
-                x,y = point
+            for x in range(
+
+                self.world.grid_width
+
+            ):
 
 
-                if (
-                    0 <= x < self.world.width
-                    and
-                    0 <= y < self.world.height
-                ):
+
+                lava = self.world.grid[y][x]["lava"]
 
 
-                    pygame.draw.rect(
 
-                        screen,
+                if lava <= 0:
 
-                        (255,80,0),
+                    continue
 
-                        (
 
-                            x*self.world.terrain.cell_size,
 
-                            y*self.world.terrain.cell_size,
+                pygame.draw.rect(
 
-                            self.world.terrain.cell_size,
+                    screen,
 
-                            self.world.terrain.cell_size
+                    (
+
+                        255,
+
+                        80,
+
+                        0
+
+                    ),
+
+                    (
+
+                        int(
+
+                            x *
+
+                            cell *
+
+                            self.scale_x
+
+                        ),
+
+
+                        int(
+
+                            y *
+
+                            cell *
+
+                            self.scale_y
+
+                        ),
+
+
+                        max(
+
+                            1,
+
+                            int(
+
+                                cell *
+
+                                self.scale_x
+
+                            )
+
+                        ),
+
+
+                        max(
+
+                            1,
+
+                            int(
+
+                                cell *
+
+                                self.scale_y
+
+                            )
 
                         )
 
                     )
 
-
-    def draw_ash(self, screen):
-
-
-        for plume in self.world.ash_plumes:
+                )
 
 
-            for point in plume:
+
+    # =====================================================
+    # ASH CELLS
+    # =====================================================
+
+    def draw_ash(
+
+        self,
+
+        screen
+
+    ):
 
 
-                x,y = point
+        cell = self.world.terrain.cell_size
 
 
-                if (
-                    0 <= x < self.world.width
-                    and
-                    0 <= y < self.world.height
-                ):
+
+        ash_surface = pygame.Surface(
+
+            screen.get_size(),
+
+            pygame.SRCALPHA
+
+        )
 
 
-                    pygame.draw.circle(
 
-                        screen,
+        for y in range(
 
-                        (180,180,180),
+            self.world.grid_height
 
-                        point,
+        ):
 
-                        2
+
+            for x in range(
+
+                self.world.grid_width
+
+            ):
+
+
+
+                ash = self.world.grid[y][x]["ash"]
+
+
+
+                if ash <= 0:
+
+                    continue
+
+
+
+                alpha = max(
+
+                    20,
+
+                    min(
+
+                        180,
+
+                        int(ash*180)
 
                     )
+
+                )
+
+
+
+                pygame.draw.rect(
+
+                    ash_surface,
+
+                    (
+
+                        120,
+
+                        120,
+
+                        120,
+
+                        alpha
+
+                    ),
+
+                    (
+
+                        int(
+
+                            x *
+
+                            cell *
+
+                            self.scale_x
+
+                        ),
+
+
+                        int(
+
+                            y *
+
+                            cell *
+
+                            self.scale_y
+
+                        ),
+
+
+                        max(
+
+                            1,
+
+                            int(
+
+                                cell *
+
+                                self.scale_x
+
+                            )
+
+                        ),
+
+
+                        max(
+
+                            1,
+
+                            int(
+
+                                cell *
+
+                                self.scale_y
+
+                            )
+
+                        )
+
+                    )
+
+                )
+
+
+
+        screen.blit(
+
+            ash_surface,
+
+            (
+
+                0,
+
+                0
+
+            )
+
+        )
+
+
+
+    # =====================================================
+    # INFRASTRUCTURE
+    # =====================================================
+
+    def draw_structures(
+
+        self,
+
+        screen
+
+    ):
+
+
+        cell = self.world.terrain.cell_size
+
+
+        drawn=set()
+
+
+
+        for y in range(
+
+            self.world.grid_height
+
+        ):
+
+
+            for x in range(
+
+                self.world.grid_width
+
+            ):
+
+
+
+                structure = self.world.grid[y][x]["structure"]
+
+
+
+                if structure is None or structure.destroyed:
+
+                    continue
+
+
+
+                if structure in drawn:
+
+                    continue
+
+
+
+                drawn.add(structure)
+
+
+
+                colour = structure.colour
+
+
+
+                sx,sy = structure.position
+
+
+
+                w,h = structure.size
+
+
+
+                pygame.draw.rect(
+
+                    screen,
+
+                    colour,
+
+                    (
+
+                        int(
+
+                            sx *
+
+                            cell *
+
+                            self.scale_x
+
+                        ),
+
+                        int(
+
+                            sy *
+
+                            cell *
+
+                            self.scale_y
+
+                        ),
+
+                        int(
+
+                            w *
+
+                            cell *
+
+                            self.scale_x
+
+                        ),
+
+                        int(
+
+                            h *
+
+                            cell *
+
+                            self.scale_y
+
+                        )
+
+                    ),
+
+                    2
+
+                )
 
 
 
@@ -341,6 +801,7 @@ class Renderer:
             x,y = earthquake["location"]
 
 
+
             pygame.draw.circle(
 
                 screen,
@@ -357,31 +818,66 @@ class Renderer:
 
                 (
 
-                    x,
+                    int(
 
-                    y
+                        x*self.scale_x
+
+                    ),
+
+                    int(
+
+                        y*self.scale_y
+
+                    )
 
                 ),
 
-                2
+                max(
+
+                    5,
+
+                    int(
+
+                        earthquake["magnitude"]
+
+                    )
+
+                )
 
             )
+
+
 
     # =====================================================
     # SIDEBAR
     # =====================================================
 
-    def draw_sidebar(self, screen):
+    def draw_sidebar(
+
+        self,
+
+        screen
+
+    ):
 
 
-        x = self.world.width
+        x = self.map_width
+
 
 
         pygame.draw.rect(
 
             screen,
 
-            (30,30,30),
+            (
+
+                30,
+
+                30,
+
+                30
+
+            ),
 
             (
 
@@ -391,57 +887,109 @@ class Renderer:
 
                 self.sidebar_width,
 
-                self.world.height
+                self.screen_height
 
             )
 
         )
 
 
-        text = self.font.render(
+
+        title=self.font.render(
 
             "Simulation",
 
             True,
 
-            (255,255,255)
+            (
+
+                255,
+
+                255,
+
+                255
+
+            )
 
         )
 
 
         screen.blit(
 
-            text,
+            title,
 
             (
 
                 x+20,
 
-                30
+                40
 
             )
 
         )
 
 
-
-        lines=[
+        lines = [
 
             f"Day: {self.world.day}",
 
             "",
 
-            "Events today:",
+            "Today:",
 
-            f"Earthquakes: {self.statistics['earthquakes']}",
+            f"Earthquakes: {self.statistics['daily_earthquakes']}",
 
-            f"Eruptions: {self.statistics['eruption'] if 'eruption' in self.statistics else self.statistics['eruptions']}"
+            f"Eruptions: {self.statistics['daily_eruptions']}",
+
+            "",
+
+            "Total:",
+
+            f"Earthquakes: {self.statistics['accumulated_earthquakes']}",
+
+            f"Eruptions: {self.statistics['accumulated_eruptions']}"
 
         ]
 
 
+        y=120
+        # draw the wind direction and current wind speed
+        wind_text = self.small_font.render(
+        
+            f"Wind: {self.world.vector_to_compass(self.world.wind_direction)} at {round(self.world.wind_speed, 1)} m/s",
 
-        y=90
+            True,
+
+            (
+
+                220,
+
+                220,
+
+                220
+
+            )
+
+        )
+
+
+        screen.blit(
+
+            wind_text,
+
+            (
+
+                x+20,
+
+                y
+
+            )
+
+        )
+
+        y += 40
+
+        # draw volcano and earthquke stats
 
 
         for line in lines:
@@ -453,7 +1001,15 @@ class Renderer:
 
                 True,
 
-                (220,220,220)
+                (
+
+                    220,
+
+                    220,
+
+                    220
+
+                )
 
             )
 
@@ -473,4 +1029,4 @@ class Renderer:
             )
 
 
-            y+=35
+            y+=40

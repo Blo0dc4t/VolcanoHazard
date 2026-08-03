@@ -4,30 +4,57 @@ from world import World
 from renderer import Renderer
 
 
-#
-# Window size
-#
-
-WORLD_WIDTH = 1000
-WORLD_HEIGHT = 1000
-
-SIDEBAR_WIDTH = 250
-
 
 pygame.init()
 
+
+
+#
+# Get monitor resolution
+#
+
+info = pygame.display.Info()
+
+
+SCREEN_WIDTH = info.current_w
+
+SCREEN_HEIGHT = info.current_h
+
+
+
+#
+# Simulation resolution
+# (never changes)
+#
+
+WORLD_WIDTH = 1000
+
+WORLD_HEIGHT = 1000
+
+
+
+SIDEBAR_FRACTION = 0.2
+
+
+
+#
+# Fullscreen window
+#
 
 screen = pygame.display.set_mode(
 
     (
 
-        WORLD_WIDTH + SIDEBAR_WIDTH,
+        SCREEN_WIDTH,
 
-        WORLD_HEIGHT
+        SCREEN_HEIGHT
 
-    )
+    ),
+
+    pygame.FULLSCREEN
 
 )
+
 
 
 pygame.display.set_caption(
@@ -35,6 +62,7 @@ pygame.display.set_caption(
     "Volcano Simulation"
 
 )
+
 
 
 clock = pygame.time.Clock()
@@ -56,38 +84,36 @@ world = World(
 
 
 #
-# Create renderer
+# Renderer
 #
 
 renderer = Renderer(
 
     world,
 
-    SIDEBAR_WIDTH
+    SIDEBAR_FRACTION
 
 )
 
 
 
-running = True
+running=True
 
+SIMULATION_SPEED=10
 
-day_timer = 0
+day_timer=0
 
-
-
-#
-# Store daily statistics
-#
 
 daily_events = {
-
-    "earthquakes":0,
-
-    "eruptions":0
-
+    "earthquakes": 0,
+    "eruptions": 0
 }
 
+
+accumulated_events = {
+    "earthquakes": 0,
+    "eruptions": 0
+}
 
 
 while running:
@@ -101,9 +127,16 @@ while running:
             running=False
 
 
+        if event.type == pygame.KEYDOWN:
+
+            if event.key == pygame.K_ESCAPE:
+
+                running=False
+
+
 
     #
-    # Update simulation
+    # Simulation update
     #
 
     day_timer += 1
@@ -111,44 +144,55 @@ while running:
 
     if day_timer >= 10:
 
+        earthquakes_today = 0
+        eruptions_today = 0
 
-        result = world.update()
+        for _ in range(SIMULATION_SPEED):
 
+            result = world.update()
 
-        day_timer=0
+            earthquakes_today += len(
+                result["earthquakes"]
+            )
 
+            if result["eruption"]:
+                eruptions_today += 1
 
+        day_timer = 0
 
         #
-        # Update sidebar statistics
+        # Store today's events
         #
 
-        daily_events["earthquakes"] = len(
+        daily_events["earthquakes"] = earthquakes_today
+        daily_events["eruptions"] = eruptions_today
 
-            result["earthquakes"]
+        #
+        # Update totals
+        #
 
-        )
+        accumulated_events["earthquakes"] += earthquakes_today
+        accumulated_events["eruptions"] += eruptions_today
 
+        #
+        # Send both to renderer
+        #
 
-        daily_events["eruptions"] = int(
+        renderer.update_statistics({
 
-            result["eruption"]
+            "daily_earthquakes": daily_events["earthquakes"],
+            "daily_eruptions": daily_events["eruptions"],
 
-        )
+            "accumulated_earthquakes": accumulated_events["earthquakes"],
+            "accumulated_eruptions": accumulated_events["eruptions"]
 
-
-
-        renderer.update_statistics(
-
-            daily_events
-
-        )
+        })
 
 
 
     #
     # Draw
-
+    #
     renderer.draw(
 
         screen
