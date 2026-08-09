@@ -4,7 +4,7 @@ INFRASTRUCTURE_TYPES = {
     "city": {
 
 
-        "health":1000,
+        "health":100,
 
 
         "colour":(
@@ -26,11 +26,19 @@ INFRASTRUCTURE_TYPES = {
 
         ),
 
-        "income": 10,
+        "income": 1,
+
+        "build_cost": 100,
 
         "repair_cost": 1,
 
-        "destroyed_repair_multiplier": 1.5
+        "destroyed_repair_multiplier": 1.5,
+
+        "earthquake_detection_radius": 10,
+
+        "allowed_terrain": [],
+
+        "blocked_terrain": ["mountains", "water"]
 
     },
 
@@ -39,7 +47,7 @@ INFRASTRUCTURE_TYPES = {
     "town": {
 
 
-        "health":500,
+        "health":50,
 
 
         "colour":(
@@ -61,11 +69,19 @@ INFRASTRUCTURE_TYPES = {
 
         ),
 
-        "income": 5,
+        "income": 0.5,
+
+        "build_cost": 50,
 
         "repair_cost": 1,
 
-        "destroyed_repair_multiplier": 1.5
+        "destroyed_repair_multiplier": 1.5,
+
+        "earthquake_detection_radius": 5,
+
+        "allowed_terrain": [],
+
+        "blocked_terrain": ["mountains", "water"]
 
     },
 
@@ -74,7 +90,7 @@ INFRASTRUCTURE_TYPES = {
     "road": {
 
 
-        "health":300,
+        "health":25,
 
 
         "colour":(
@@ -96,11 +112,19 @@ INFRASTRUCTURE_TYPES = {
 
         ),
 
-        "income": -1,
+        "income": -0.1,
+
+        "build_cost": 10,
 
         "repair_cost": 1,
 
-        "destroyed_repair_multiplier": 1.5
+        "destroyed_repair_multiplier": 1.5,
+
+        "earthquake_detection_radius": 1,
+
+        "allowed_terrain": [],
+
+        "blocked_terrain": ["water"]
 
     }
 

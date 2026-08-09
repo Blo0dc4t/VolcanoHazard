@@ -1,8 +1,28 @@
+WORLD_WIDTH = 1000
+
+WORLD_HEIGHT = 1000
+
+SIDEBAR_FRACTION = 0.2
+
+
+#
+# Simulation timing
+#
+
+SIMULATION_SPEED = 1
+
+
+# Game states
+
 GAME_STATES = {
 
     "CITY_SELECTION": 0,
 
-    "PLAYING": 1
+    "PLAYING": 1,
+
+    "PAUSED": 2,
+
+    "BUILDING_PLACEMENT": 3
 
 }
 

@@ -21,7 +21,7 @@ TERRAIN_TYPES = {
 
     "plains": {
 
-        "level": 0.55,
+        "level": 0.75,
 
         "colour": (
             60,
@@ -32,17 +32,17 @@ TERRAIN_TYPES = {
     },
 
 
-    "hills": {
+    # "hills": {
 
-        "level": 0.75,
+    #     "level": 0.75,
 
-        "colour": (
-            130,
-            100,
-            60
-        )
+    #     "colour": (
+    #         130,
+    #         100,
+    #         60
+    #     )
 
-    },
+    # },
 
 
     "mountains": {
@@ -83,7 +83,9 @@ class Terrain:
 
         seed=None,
 
-        caldera_num=1
+        caldera_num=1,
+
+        caldera_min_distance=10
 
     ):
 
@@ -109,6 +111,10 @@ class Terrain:
         self.persistence = persistence
 
         self.lacunarity = lacunarity
+
+        self.caldera_num = caldera_num
+
+        self.caldera_min_distance = caldera_min_distance
 
 
         self.water_level = TERRAIN_TYPES["water"]["level"]
@@ -147,10 +153,18 @@ class Terrain:
         self.highest_point = self.find_highest_point()
 
         self.caldera_positions = []
-        
-        for _ in range(caldera_num):
-            self.caldera_positions.append(self.choose_caldera_position())
 
+        self.caldera_positions = []
+
+        for _ in range(caldera_num):
+
+            position = self.choose_caldera_position()
+
+            if position is not None:
+
+                self.caldera_positions.append(
+                    position
+                )
 
 
     # =================================================
@@ -361,7 +375,6 @@ class Terrain:
                 ) ** 0.5
 
 
-
                 if distance > max_distance:
 
                     continue
@@ -372,7 +385,12 @@ class Terrain:
                 # Ignore water
                 #
 
-                if self.is_water((x, y)):
+                if self.is_water(
+                    (
+                        x * self.cell_size,
+                        y * self.cell_size
+                    )
+                ):
 
                     continue
 
@@ -396,8 +414,7 @@ class Terrain:
                 ]
 
 
-
-                if all(
+                if not all(
 
                     height > neighbour
 
@@ -405,57 +422,113 @@ class Terrain:
 
                 ):
 
+                    continue
 
-                    candidates.append(
 
-                        (
-                            height,
-                            x,
-                            y
-                        )
+
+                #
+                # Check distance from
+                # existing calderas
+                #
+
+                too_close = False
+
+
+                for existing in self.caldera_positions:
+
+
+                    existing_x = (
+
+                        existing[0] /
+
+                        self.cell_size
 
                     )
 
 
+                    existing_y = (
+
+                        existing[1] /
+
+                        self.cell_size
+
+                    )
+
+
+                    caldera_distance = (
+
+                        (
+                            x - existing_x
+                        ) ** 2
+
+                        +
+
+                        (
+                            y - existing_y
+                        ) ** 2
+
+                    ) ** 0.5
+
+
+                    if (
+
+                        caldera_distance
+
+                        <
+
+                        self.caldera_min_distance
+
+                    ):
+
+                        too_close = True
+
+                        break
+
+
+
+                if too_close:
+
+                    continue
+
+
+
+                candidates.append(
+
+                    (
+                        height,
+                        x,
+                        y
+                    )
+
+                )
+
+
 
         #
-        # If no local maxima found, fall back
+        # No suitable local maximum
         #
 
         if not candidates:
 
-
             print(
-                "No local maxima found, using highest point"
+                "No suitable caldera location found"
             )
 
-
-            x, y = self.find_highest_point()
-
-
-            return (
-
-                x * self.cell_size,
-
-                y * self.cell_size
-
-            )
+            return None
 
 
 
         #
-        # Pick highest local maximum
+        # Pick highest suitable
+        # local maximum
         #
 
         candidates.sort(
-
             reverse=True
-
         )
 
 
         _, x, y = candidates[0]
-
 
 
         return (
@@ -465,7 +538,6 @@ class Terrain:
             y * self.cell_size
 
         )
-
 
     # =================================================
     # HEIGHT QUERY

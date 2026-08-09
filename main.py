@@ -2,12 +2,16 @@ import pygame
 
 from world import World
 from renderer import Renderer
-from constants import GAME_STATES
-
+from constants import (
+    GAME_STATES,
+    WORLD_WIDTH,
+    WORLD_HEIGHT,
+    SIDEBAR_FRACTION,
+    SIMULATION_SPEED
+)
 
 
 pygame.init()
-
 
 
 #
@@ -16,63 +20,34 @@ pygame.init()
 
 info = pygame.display.Info()
 
-
 SCREEN_WIDTH = info.current_w
-
 SCREEN_HEIGHT = info.current_h
-
-
-
-WORLD_WIDTH = 1000
-
-WORLD_HEIGHT = 1000
-
-
-
-SIDEBAR_FRACTION = 0.2
-
-
 
 screen = pygame.display.set_mode(
 
     (
-
         SCREEN_WIDTH,
-
         SCREEN_HEIGHT
-
     ),
 
     pygame.FULLSCREEN
-
 )
-
-
 
 pygame.display.set_caption(
-
     "Volcano Simulation"
-
 )
-
-
 
 clock = pygame.time.Clock()
 
 
-
 #
-# Create world
+# World
 #
 
 world = World(
-
     WORLD_WIDTH,
-
     WORLD_HEIGHT
-
 )
-
 
 
 #
@@ -80,27 +55,18 @@ world = World(
 #
 
 renderer = Renderer(
-
     world,
-
     SIDEBAR_FRACTION
-
 )
 
 
-
 #
-# Simulation timing
+# Simulation timer
 #
-
-SIMULATION_SPEED = 10
 
 day_timer = 0
 
-
-
 running = True
-
 
 
 # =====================================================
@@ -109,28 +75,33 @@ running = True
 
 while running:
 
-
     #
     # EVENTS
     #
 
     for event in pygame.event.get():
 
+        #
+        # Quit
+        #
 
         if event.type == pygame.QUIT:
 
             running = False
 
-
+        #
+        # Keyboard
+        #
 
         if event.type == pygame.KEYDOWN:
 
+            #
+            # Escape
+            #
 
             if event.key == pygame.K_ESCAPE:
 
                 running = False
-
-
 
             #
             # Repair selected structure
@@ -138,154 +109,328 @@ while running:
 
             if event.key == pygame.K_r:
 
-
                 if world.selected_structure:
 
-
-                    repaired = world.selected_structure.repair()
-
+                    repaired = (
+                        world.selected_structure.repair()
+                    )
 
                     print(
 
-                        f"Repaired {world.selected_structure.name} for {repaired} HP"
+                        f"Repaired "
+                        f"{world.selected_structure.name} "
+                        f"for "
+                        f"{repaired} HP"
 
                     )
 
+            #
+            # Pause / resume
+            #
 
+            if event.key == pygame.K_RETURN:
+
+                if (
+                    world.game_state ==
+                    GAME_STATES["PAUSED"]
+                ):
+
+                    world.game_state = (
+                        GAME_STATES["PLAYING"]
+                    )
+
+                    print(
+                        "Simulation resumed"
+                    )
+
+                elif (
+                    world.game_state ==
+                    GAME_STATES["PLAYING"]
+                ):
+
+                    world.game_state = (
+                        GAME_STATES["PAUSED"]
+                    )
+
+                    print(
+                        "Simulation paused"
+                    )
+
+            #
+            # Building mode
+            #
+
+            if event.key == pygame.K_b:
+
+                if world.game_state in (
+
+                    GAME_STATES["PLAYING"],
+                    GAME_STATES["PAUSED"]
+
+                ):
+
+                    world.game_state = (
+                        GAME_STATES[
+                            "BUILDING_PLACEMENT"
+                        ]
+                    )
+
+                    world.build_structure_type = None
+
+                    print(
+                        "Building mode"
+                    )
+
+                elif (
+                    world.game_state ==
+                    GAME_STATES[
+                        "BUILDING_PLACEMENT"
+                    ]
+                ):
+
+                    world.game_state = (
+                        GAME_STATES["PLAYING"]
+                    )
+
+                    world.build_structure_type = None
+
+                    print(
+                        "Building mode cancelled"
+                    )
+
+            #
+            # Building number selection
+            #
+
+            if (
+                event.key >= pygame.K_1
+                and
+                event.key <= pygame.K_9
+                and
+                world.game_state ==
+                GAME_STATES[
+                    "BUILDING_PLACEMENT"
+                ]
+            ):
+
+                buildable_types = (
+                    renderer.get_buildable_types()
+                )
+
+                number = (
+                    event.key -
+                    pygame.K_1
+                )
+
+                if number < len(
+                    buildable_types
+                ):
+
+                    world.build_structure_type = (
+                        buildable_types[number]
+                    )
+
+                    print(
+
+                        "Selected building:",
+
+                        world.build_structure_type
+
+                    )
 
         #
-        # Structure selection
+        # Mouse
         #
 
         if event.type == pygame.MOUSEBUTTONDOWN:
 
+            #
+            # Left button
+            #
 
-            structure = renderer.get_clicked_structure(
+            if event.button != 1:
+                continue
 
-                event.pos
+            #
+            # BUILDING MODE
+            #
 
-            )
+            if (
+                world.game_state ==
+                GAME_STATES[
+                    "BUILDING_PLACEMENT"
+                ]
+            ):
 
+                #
+                # Must have selected a type
+                #
 
-            if structure:
+                if (
+                    world.build_structure_type
+                    is None
+                ):
+                    continue
 
+                #
+                # Convert mouse position
+                # to grid position
+                #
 
-                print(
+                grid_x, grid_y = (
+                    renderer.screen_to_grid(
+                        *event.pos
+                    )
+                )
 
-                    "Clicked on structure:",
+                #
+                # Attempt construction
+                #
 
-                    structure.name
+                placed = world.build_structure(
+
+                    world.build_structure_type,
+
+                    grid_x,
+
+                    grid_y
 
                 )
 
+                if placed:
 
-                #
-                # Always select structure
-                #
+                    print(
 
-                world.selected_structure = structure
-
-
-
-                #
-                # City selection:
-                # clicking also claims the city
-                #
-
-                if world.game_state == GAME_STATES["CITY_SELECTION"]:
-
-
-                    claimed = world.claim_city(
-
-                        structure
+                        f"Placed "
+                        f"{world.build_structure_type} "
+                        f"at "
+                        f"({grid_x}, {grid_y})"
 
                     )
 
+                else:
 
-                    if claimed:
+                    print(
+                        "Cannot build there"
+                    )
 
+                #
+                # Do not also select
+                # a structure underneath
+                # the mouse.
+                #
 
-                        player = world.players[
-                            world.current_player_index - 1
-                        ]
+                continue
 
+            #
+            # Get clicked structure
+            #
 
-                        print(
+            structure = (
+                renderer.get_clicked_structure(
+                    event.pos
+                )
+            )
 
-                            player.name,
+            #
+            # Nothing clicked
+            #
 
-                            "selected",
+            if structure is None:
+                continue
 
-                            structure.name
+            #
+            # CITY SELECTION
+            #
 
-                        )
+            if (
+                world.game_state ==
+                GAME_STATES[
+                    "CITY_SELECTION"
+                ]
+            ):
 
+                claimed = world.claim_city(structure)
 
+                if claimed:
 
-                        #
-                        # All players selected
-                        #
+                    print(
+                        structure.owner.name,
+                        "selected",
+                        structure.name
+                    )
 
-                        if world.current_player_index >= len(world.players):
+            #
+            # NORMAL PLAY OR PAUSED
+            #
 
+            if (
+                world.game_state in (
+                    GAME_STATES["PLAYING"], GAME_STATES["PAUSED"]
+                )
+            ):
 
-                            world.game_state = GAME_STATES["PLAYING"]
+                #
+                # Select structure
+                #
 
+                world.selected_structure = (
+                    structure
+                )
 
-                            print(
+                #
+                # If it belongs to a player,
+                # switch to that player.
+                #
 
-                                "Simulation started"
+                switched = (
+                    world.select_player_from_structure(
+                        structure
+                    )
+                )
 
-                            )
+                if switched:
 
+                    print(
 
+                        "Current player:",
 
+                        world.get_current_player().name
+
+                    )
 
     #
     # SIMULATION UPDATE
     #
 
-    if world.game_state == GAME_STATES["PLAYING"]:
-
+    if (
+        world.game_state ==
+        GAME_STATES["PLAYING"]
+    ):
 
         day_timer += 1
 
-
-
         if day_timer >= 10:
 
-
-            for _ in range(SIMULATION_SPEED):
-
+            for _ in range(
+                SIMULATION_SPEED
+            ):
 
                 world.update()
 
-
-
             day_timer = 0
-
-
-
 
     #
     # DRAW
     #
 
     renderer.draw(
-
         screen
-
     )
-
 
     pygame.display.flip()
 
-
-
     clock.tick(60)
-
-
-
 
 
 pygame.quit()
