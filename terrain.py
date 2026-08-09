@@ -3,6 +3,63 @@ import noise
 import numpy as np
 
 
+TERRAIN_TYPES = {
+
+
+    "water": {
+
+        "level": 0.35,
+
+        "colour": (
+            40,
+            80,
+            180
+        )
+
+    },
+
+
+    "plains": {
+
+        "level": 0.55,
+
+        "colour": (
+            60,
+            170,
+            60
+        )
+
+    },
+
+
+    "hills": {
+
+        "level": 0.75,
+
+        "colour": (
+            130,
+            100,
+            60
+        )
+
+    },
+
+
+    "mountains": {
+
+        "level": 1.0,
+
+        "colour": (
+            180,
+            180,
+            180
+        )
+
+    }
+
+}
+
+
 class Terrain:
 
 
@@ -26,9 +83,7 @@ class Terrain:
 
         seed=None,
 
-        water_level=0.35,
-
-        mountain_level=0.75
+        caldera_num=1
 
     ):
 
@@ -56,9 +111,9 @@ class Terrain:
         self.lacunarity = lacunarity
 
 
-        self.water_level = water_level
+        self.water_level = TERRAIN_TYPES["water"]["level"]
 
-        self.mountain_level = mountain_level
+        self.mountain_level = TERRAIN_TYPES["mountains"]["level"]
 
 
         if seed is None:
@@ -91,7 +146,10 @@ class Terrain:
 
         self.highest_point = self.find_highest_point()
 
-        self.caldera_position = self.choose_caldera_position()
+        self.caldera_positions = []
+        
+        for _ in range(caldera_num):
+            self.caldera_positions.append(self.choose_caldera_position())
 
 
 
@@ -155,6 +213,79 @@ class Terrain:
         )
 
 
+    def is_water(self, position):
+        x,y = position
+
+
+        gx = int(
+
+            x / self.cell_size
+
+        )
+
+        gy = int(
+
+            y / self.cell_size
+
+        )
+
+
+        gx = max(
+            0,
+            min(
+                self.grid_width-1,
+                gx
+            )
+        )
+
+        gy = max(
+            0,
+            min(
+                self.grid_height-1,
+                gy
+            )
+        )
+
+
+        return self.height_map[gy,gx] < self.water_level
+
+    def is_mountain(self, position):
+        x,y = position
+
+
+        gx = int(
+
+            x / self.cell_size
+
+        )
+
+        gy = int(
+
+            y / self.cell_size
+
+        )
+
+
+        gx = max(
+            0,
+            min(
+                self.grid_width-1,
+                gx
+            )
+        )
+
+        gy = max(
+            0,
+            min(
+                self.grid_height-1,
+                gy
+            )
+        )
+
+
+        return self.height_map[gy,gx] > self.mountain_level
+
+
 
     # =================================================
     # HIGHEST POINT
@@ -185,10 +316,146 @@ class Terrain:
     # CALDERA
     # =================================================
 
-    def choose_caldera_position(self):
+    def choose_caldera_position(self, centre_position=None):
 
 
-        x,y = self.highest_point
+        if centre_position is None:
+
+            centre_x = self.grid_width // 2
+            centre_y = self.grid_height // 2
+
+        else:
+
+            centre_x, centre_y = centre_position
+
+
+
+        #
+        # Search radius around centre
+        #
+
+        max_distance = min(
+            self.grid_width,
+            self.grid_height
+        ) * 0.5
+
+
+
+        candidates = []
+
+
+
+        for y in range(1, self.grid_height - 1):
+
+            for x in range(1, self.grid_width - 1):
+
+
+                #
+                # Distance from preferred centre
+                #
+
+                distance = (
+                    (x - centre_x) ** 2
+                    +
+                    (y - centre_y) ** 2
+                ) ** 0.5
+
+
+
+                if distance > max_distance:
+
+                    continue
+
+
+
+                #
+                # Ignore water
+                #
+
+                if self.is_water((x, y)):
+
+                    continue
+
+
+
+                height = self.height_map[y][x]
+
+
+
+                #
+                # Check local maximum
+                #
+
+                neighbours = [
+
+                    self.height_map[y-1][x],
+                    self.height_map[y+1][x],
+                    self.height_map[y][x-1],
+                    self.height_map[y][x+1]
+
+                ]
+
+
+
+                if all(
+
+                    height > neighbour
+
+                    for neighbour in neighbours
+
+                ):
+
+
+                    candidates.append(
+
+                        (
+                            height,
+                            x,
+                            y
+                        )
+
+                    )
+
+
+
+        #
+        # If no local maxima found, fall back
+        #
+
+        if not candidates:
+
+
+            print(
+                "No local maxima found, using highest point"
+            )
+
+
+            x, y = self.find_highest_point()
+
+
+            return (
+
+                x * self.cell_size,
+
+                y * self.cell_size
+
+            )
+
+
+
+        #
+        # Pick highest local maximum
+        #
+
+        candidates.sort(
+
+            reverse=True
+
+        )
+
+
+        _, x, y = candidates[0]
+
 
 
         return (
@@ -198,7 +465,6 @@ class Terrain:
             y * self.cell_size
 
         )
-
 
 
     # =================================================

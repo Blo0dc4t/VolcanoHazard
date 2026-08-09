@@ -1,4 +1,6 @@
 import pygame
+from terrain import TERRAIN_TYPES
+from constants import GAME_STATES
 
 
 class Renderer:
@@ -108,40 +110,88 @@ class Renderer:
 
         )
 
+        #
+        # Multiplayer selection
+        #
 
-
-        self.statistics = {
-
-            "daily_earthquakes":0,
-
-            "daily_eruptions":0,
-
-            "accumulated_earthquakes":0,
-
-            "accumulated_eruptions":0
-
-        }
+        self.current_player_index = 0
 
 
 
         self.terrain_surface = self.create_terrain_surface()
 
 
-
-    # =====================================================
-    # STATISTICS
-    # =====================================================
-
-    def update_statistics(
+    def get_clicked_structure(
 
         self,
 
-        statistics
+        mouse_position
 
     ):
 
-        self.statistics = statistics
 
+        mx,my = mouse_position
+
+
+
+        for structure in self.world.infrastructure:
+
+
+            if structure.destroyed:
+
+                continue
+
+
+
+            x,y = structure.position
+
+            w,h = structure.size
+
+
+
+            rect = pygame.Rect(
+
+                int(
+                    x *
+                    self.world.terrain.cell_size *
+                    self.scale_x
+                ),
+
+
+                int(
+                    y *
+                    self.world.terrain.cell_size *
+                    self.scale_y
+                ),
+
+
+                int(
+                    w *
+                    self.world.terrain.cell_size *
+                    self.scale_x
+                ),
+
+
+                int(
+                    h *
+                    self.world.terrain.cell_size *
+                    self.scale_y
+                )
+
+            )
+
+
+
+            if rect.collidepoint(
+                mx,
+                my
+            ):
+
+                return structure
+
+
+
+        return None
 
 
     # =====================================================
@@ -185,58 +235,39 @@ class Renderer:
 
 
 
-                if h < terrain.water_level:
+                colour = None
 
 
-                    colour = (
+                for terrain_type, data in sorted(
+                    
+                    TERRAIN_TYPES.items(),
 
-                        40,
+                    key=lambda item: item[1]["level"]
 
-                        80,
-
-                        180
-
-                    )
+                ):
 
 
-                elif h < 0.55:
+                    if h < data["level"]:
+
+                        colour = data["colour"]
+
+                        break
 
 
-                    colour = (
 
-                        60,
+                #
+                # Safety fallback
+                #
 
-                        170,
-
-                        60
-
-                    )
-
-
-                elif h < terrain.mountain_level:
-
+                if colour is None:
 
                     colour = (
 
-                        130,
+                        255,
 
-                        100,
+                        255,
 
-                        60
-
-                    )
-
-
-                else:
-
-
-                    colour = (
-
-                        180,
-
-                        180,
-
-                        180
+                        255
 
                     )
 
@@ -339,7 +370,6 @@ class Renderer:
         )
 
 
-
     # =====================================================
     # VOLCANO
     # =====================================================
@@ -353,36 +383,33 @@ class Renderer:
     ):
 
 
-        x,y = self.world.volcano.caldera_position
+        for volcano in self.world.volcanoes:
+
+
+            x, y = volcano.caldera_position
 
 
 
-        pygame.draw.circle(
+            pygame.draw.circle(
 
-            screen,
+                screen,
 
-            (
+                (
+                    255,
+                    0,
+                    0
+                ),
 
-                255,
+                (
+                    int(x*self.scale_x),
 
-                0,
+                    int(y*self.scale_y)
 
-                0
+                ),
 
-            ),
+                6
 
-            (
-
-                int(x*self.scale_x),
-
-                int(y*self.scale_y)
-
-            ),
-
-            6
-
-        )
-
+            )
 
 
     # =====================================================
@@ -663,6 +690,230 @@ class Renderer:
     # INFRASTRUCTURE
     # =====================================================
 
+
+        # =====================================================
+    # HEALTH BAR
+    # =====================================================
+
+    def draw_health_bar(
+
+        self,
+
+        screen,
+
+        structure,
+
+        rect
+
+    ):
+
+
+        if structure.max_health <= 0:
+
+            return
+
+
+
+        health_fraction = (
+
+            structure.health /
+
+            structure.max_health
+
+        )
+
+
+        health_fraction = max(
+
+            0,
+
+            min(
+
+                1,
+
+                health_fraction
+
+            )
+
+        )
+
+
+
+        bar_width = rect[2]
+
+        bar_height = 6
+
+
+
+        bar_x = rect[0]
+
+        bar_y = rect[1] - 10
+
+
+
+        #
+        # Background
+        #
+
+        pygame.draw.rect(
+
+            screen,
+
+            (
+
+                80,
+
+                80,
+
+                80
+
+            ),
+
+            (
+
+                bar_x,
+
+                bar_y,
+
+                bar_width,
+
+                bar_height
+
+            )
+
+        )
+
+
+
+        #
+        # Health colour
+        #
+
+        if health_fraction > 0.6:
+
+
+            colour = (
+
+                0,
+
+                200,
+
+                0
+
+            )
+
+
+        elif health_fraction > 0.3:
+
+
+            colour = (
+
+                220,
+
+                200,
+
+                0
+
+            )
+
+
+        else:
+
+
+            colour = (
+
+                220,
+
+                0,
+
+                0
+
+            )
+
+
+
+        pygame.draw.rect(
+
+            screen,
+
+            colour,
+
+            (
+
+                bar_x,
+
+                bar_y,
+
+                int(
+
+                    bar_width *
+
+                    health_fraction
+
+                ),
+
+                bar_height
+
+            )
+
+        )
+
+
+
+
+
+    # =====================================================
+    # HEALTH TEXT
+    # =====================================================
+
+    def draw_health_text(
+
+        self,
+
+        screen,
+
+        structure,
+
+        rect
+
+    ):
+
+
+        text = self.small_font.render(
+
+            f"{int(structure.health)}/{int(structure.max_health)}",
+
+            True,
+
+            (
+
+                255,
+
+                255,
+
+                255
+
+            )
+
+        )
+
+
+
+        screen.blit(
+
+            text,
+
+            (
+
+                rect[0],
+
+                rect[1] - 30
+
+            )
+
+        )
+
+
     def draw_structures(
 
         self,
@@ -675,7 +926,8 @@ class Renderer:
         cell = self.world.terrain.cell_size
 
 
-        drawn=set()
+
+        drawn = set()
 
 
 
@@ -698,7 +950,13 @@ class Renderer:
 
 
 
-                if structure is None or structure.destroyed:
+                if structure is None:
+
+                    continue
+
+
+
+                if structure.destroyed:
 
                     continue
 
@@ -714,17 +972,82 @@ class Renderer:
 
 
 
+                #
+                # Structure colour
+                #
+
                 colour = structure.colour
 
 
 
-                sx,sy = structure.position
+                #
+                # Player ownership colour
+                #
+
+                if structure.owner:
+
+                    colour = structure.owner.colour
 
 
 
-                w,h = structure.size
+                sx, sy = structure.position
+
+                w, h = structure.size
 
 
+
+                rect = (
+
+                    int(
+
+                        sx *
+
+                        cell *
+
+                        self.scale_x
+
+                    ),
+
+
+                    int(
+
+                        sy *
+
+                        cell *
+
+                        self.scale_y
+
+                    ),
+
+
+                    int(
+
+                        w *
+
+                        cell *
+
+                        self.scale_x
+
+                    ),
+
+
+                    int(
+
+                        h *
+
+                        cell *
+
+                        self.scale_y
+
+                    )
+
+                )
+
+
+
+                #
+                # Draw structure outline
+                #
 
                 pygame.draw.rect(
 
@@ -732,55 +1055,91 @@ class Renderer:
 
                     colour,
 
-                    (
+                    rect,
 
-                        int(
-
-                            sx *
-
-                            cell *
-
-                            self.scale_x
-
-                        ),
-
-                        int(
-
-                            sy *
-
-                            cell *
-
-                            self.scale_y
-
-                        ),
-
-                        int(
-
-                            w *
-
-                            cell *
-
-                            self.scale_x
-
-                        ),
-
-                        int(
-
-                            h *
-
-                            cell *
-
-                            self.scale_y
-
-                        )
-
-                    ),
-
-                    2
+                    3
 
                 )
 
 
+
+                #
+                # Health display
+                #
+
+                if structure.owner:
+
+
+                    if structure.type in (
+
+                        "city",
+
+                        "town"
+
+                    ):
+
+
+                        self.draw_health_bar(
+
+                            screen,
+
+                            structure,
+
+                            rect
+
+                        )
+
+
+
+                    if structure.type == "city":
+
+
+                        self.draw_health_text(
+
+                            screen,
+
+                            structure,
+
+                            rect
+
+                        )
+
+
+
+                #
+                # Starting selection highlight
+                #
+
+                if (
+
+                    self.world.game_state == GAME_STATES["CITY_SELECTION"]
+
+                    and
+
+                    structure.owner is None
+
+                ):
+
+
+                    pygame.draw.rect(
+
+                        screen,
+
+                        (
+
+                            255,
+
+                            255,
+
+                            255
+
+                        ),
+
+                        rect,
+
+                        1
+
+                    )
 
     # =====================================================
     # EARTHQUAKES
@@ -933,26 +1292,182 @@ class Renderer:
 
             f"Day: {self.world.day}",
 
+            f"Volcanoes: {len(self.world.volcanoes)}",
+
             "",
 
             "Today:",
 
-            f"Earthquakes: {self.statistics['daily_earthquakes']}",
+            f"Earthquakes: {len(self.world.recent_earthquakes)}",
 
-            f"Eruptions: {self.statistics['daily_eruptions']}",
+            f"Eruptions: {len(self.world.recent_eruptions)}",
 
             "",
 
             "Total:",
 
-            f"Earthquakes: {self.statistics['accumulated_earthquakes']}",
+            f"Earthquakes: {len(self.world.earthquakes)}",
 
-            f"Eruptions: {self.statistics['accumulated_eruptions']}"
+            f"Eruptions: {len(self.world.eruptions)}"
 
         ]
 
 
         y=120
+
+        #
+        # Multiplayer information
+        #
+
+        if self.world.game_state == GAME_STATES["CITY_SELECTION"]:
+
+
+            player = self.world.get_current_player()
+
+
+            if player:
+
+
+                text = self.small_font.render(
+
+                    f"{player.name}: choose city",
+
+                    True,
+
+                    (
+                        255,
+                        255,
+                        255
+                    )
+
+                )
+
+
+                screen.blit(
+
+                    text,
+
+                    (
+                        x+20,
+                        y
+                    )
+
+                )
+
+
+                y += 40
+
+
+
+        else:
+
+
+            for player in self.world.players:
+
+                if player.city:
+
+                    text = self.small_font.render(
+
+                        f"{player.name}",
+
+                        True,
+
+                        player.colour
+
+                    )
+
+                    screen.blit(
+
+                        text,
+
+                        (x + 20, y)
+
+                    )
+
+                    y += 25
+
+                    city_text = self.small_font.render(
+
+                        f"City: {player.city.name}",
+
+                        True,
+
+                        (220, 220, 220)
+
+                    )
+
+                    screen.blit(
+
+                        city_text,
+
+                        (x + 20, y)
+
+                    )
+
+                    y += 25
+
+                    repair_text = self.small_font.render(
+                        
+                        f"Repair Cost: ${player.city.get_repair_cost()}/HP",
+
+                        True,
+
+                        (220, 220, 220)
+
+                    )
+
+                    screen.blit(
+
+                        repair_text,
+
+                        (x + 20, y)
+
+                    )
+
+                    y += 25
+
+                    money_text = self.small_font.render(
+
+                        f"Money: ${player.money}",
+
+                        True,
+
+                        (255, 215, 0)
+
+                    )
+
+                    screen.blit(
+
+                        money_text,
+
+                        (x + 20, y)
+
+                    )
+
+                    y += 25
+
+                    income_text = self.small_font.render(
+
+                        f"Total Income: ${player.income}",
+
+                        True,
+
+                        (0, 255, 0)
+
+                    )
+
+                    screen.blit(
+
+                        income_text,
+
+                        (x + 20, y)
+
+                    )
+
+                    y += 40
+
+
+
         # draw the wind direction and current wind speed
         wind_text = self.small_font.render(
         

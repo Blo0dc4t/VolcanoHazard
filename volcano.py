@@ -38,7 +38,7 @@ class Volcano:
 
         earthquake_multiplier=40,
 
-        earthquake_distance_scale=150,
+        earthquake_distance_scale=200,
 
 
         #

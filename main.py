@@ -2,6 +2,7 @@ import pygame
 
 from world import World
 from renderer import Renderer
+from constants import GAME_STATES
 
 
 
@@ -10,7 +11,7 @@ pygame.init()
 
 
 #
-# Get monitor resolution
+# Screen
 #
 
 info = pygame.display.Info()
@@ -22,11 +23,6 @@ SCREEN_HEIGHT = info.current_h
 
 
 
-#
-# Simulation resolution
-# (never changes)
-#
-
 WORLD_WIDTH = 1000
 
 WORLD_HEIGHT = 1000
@@ -36,10 +32,6 @@ WORLD_HEIGHT = 1000
 SIDEBAR_FRACTION = 0.2
 
 
-
-#
-# Fullscreen window
-#
 
 screen = pygame.display.set_mode(
 
@@ -97,102 +89,188 @@ renderer = Renderer(
 
 
 
-running=True
+#
+# Simulation timing
+#
 
-SIMULATION_SPEED=10
+SIMULATION_SPEED = 10
 
-day_timer=0
-
-
-daily_events = {
-    "earthquakes": 0,
-    "eruptions": 0
-}
+day_timer = 0
 
 
-accumulated_events = {
-    "earthquakes": 0,
-    "eruptions": 0
-}
 
+running = True
+
+
+
+# =====================================================
+# MAIN LOOP
+# =====================================================
 
 while running:
 
+
+    #
+    # EVENTS
+    #
 
     for event in pygame.event.get():
 
 
         if event.type == pygame.QUIT:
 
-            running=False
+            running = False
+
 
 
         if event.type == pygame.KEYDOWN:
 
+
             if event.key == pygame.K_ESCAPE:
 
-                running=False
+                running = False
 
 
 
-    #
-    # Simulation update
-    #
+            #
+            # Repair selected structure
+            #
 
-    day_timer += 1
+            if event.key == pygame.K_r:
 
 
-    if day_timer >= 10:
+                if world.selected_structure:
 
-        earthquakes_today = 0
-        eruptions_today = 0
 
-        for _ in range(SIMULATION_SPEED):
+                    repaired = world.selected_structure.repair()
 
-            result = world.update()
 
-            earthquakes_today += len(
-                result["earthquakes"]
+                    print(
+
+                        f"Repaired {world.selected_structure.name} for {repaired} HP"
+
+                    )
+
+
+
+        #
+        # Structure selection
+        #
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+
+
+            structure = renderer.get_clicked_structure(
+
+                event.pos
+
             )
 
-            if result["eruption"]:
-                eruptions_today += 1
 
-        day_timer = 0
+            if structure:
 
-        #
-        # Store today's events
-        #
 
-        daily_events["earthquakes"] = earthquakes_today
-        daily_events["eruptions"] = eruptions_today
+                print(
 
-        #
-        # Update totals
-        #
+                    "Clicked on structure:",
 
-        accumulated_events["earthquakes"] += earthquakes_today
-        accumulated_events["eruptions"] += eruptions_today
+                    structure.name
 
-        #
-        # Send both to renderer
-        #
+                )
 
-        renderer.update_statistics({
 
-            "daily_earthquakes": daily_events["earthquakes"],
-            "daily_eruptions": daily_events["eruptions"],
+                #
+                # Always select structure
+                #
 
-            "accumulated_earthquakes": accumulated_events["earthquakes"],
-            "accumulated_eruptions": accumulated_events["eruptions"]
+                world.selected_structure = structure
 
-        })
+
+
+                #
+                # City selection:
+                # clicking also claims the city
+                #
+
+                if world.game_state == GAME_STATES["CITY_SELECTION"]:
+
+
+                    claimed = world.claim_city(
+
+                        structure
+
+                    )
+
+
+                    if claimed:
+
+
+                        player = world.players[
+                            world.current_player_index - 1
+                        ]
+
+
+                        print(
+
+                            player.name,
+
+                            "selected",
+
+                            structure.name
+
+                        )
+
+
+
+                        #
+                        # All players selected
+                        #
+
+                        if world.current_player_index >= len(world.players):
+
+
+                            world.game_state = GAME_STATES["PLAYING"]
+
+
+                            print(
+
+                                "Simulation started"
+
+                            )
+
 
 
 
     #
-    # Draw
+    # SIMULATION UPDATE
     #
+
+    if world.game_state == GAME_STATES["PLAYING"]:
+
+
+        day_timer += 1
+
+
+
+        if day_timer >= 10:
+
+
+            for _ in range(SIMULATION_SPEED):
+
+
+                world.update()
+
+
+
+            day_timer = 0
+
+
+
+
+    #
+    # DRAW
+    #
+
     renderer.draw(
 
         screen
@@ -203,7 +281,10 @@ while running:
     pygame.display.flip()
 
 
+
     clock.tick(60)
+
+
 
 
 

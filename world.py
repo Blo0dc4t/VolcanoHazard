@@ -4,6 +4,8 @@ import math
 from volcano import Volcano
 from terrain import Terrain
 from infrastructure import Infrastructure, INFRASTRUCTURE_TYPES
+from player import Player
+from constants import GAME_STATES
 
 
 
@@ -30,8 +32,6 @@ class World:
         self.width = width
 
         self.height = height
-
-
 
         #
         # Terrain
@@ -95,55 +95,82 @@ class World:
         ]
 
 
-
         #
         # Infrastructure objects
         #
 
         self.infrastructure = []
 
+        self.selected_structure = None
+
+
         #
-        # Example infrastructure
+        # Multiplayer
         #
 
-        city = Infrastructure(
+        self.players = []
 
-            name="Mount Valley City",
+        self.current_player_index = 0
 
-            structure_type="city",
+        #
+        # Create players
+        #
 
-            health=INFRASTRUCTURE_TYPES["city"]["health"],
+        self.add_player(
 
-            colour=INFRASTRUCTURE_TYPES["city"]["colour"],
+            Player(
 
-            size=INFRASTRUCTURE_TYPES["city"]["size"]
+                "Player 1",
+
+                (255,0,0)
+
+            )
 
         )
 
 
-        self.place_infrastructure(
 
-            city,
+        self.add_player(
 
-            20,
+            Player(
 
-            20
+                "Player 2",
+
+                (0,255,0)
+
+            )
 
         )
+
+
+        #
+        # Player selection state
+        #
+
+        self.game_state = GAME_STATES["CITY_SELECTION"]
+
+        #
+        # Generate settlements
+        #
+
+        self.generate_infrastructure()
 
 
         #
         # Create volcano
         #
 
-        print("creating volcano...")
+        print("creating volcanoes...")
 
+        self.volcanoes = []
 
-        self.volcano = Volcano(
+        for position in self.terrain.caldera_positions:
 
-            caldera_position=self.terrain.caldera_position,
-
-        )
+            self.volcanoes.append(
+                Volcano(
+                    caldera_position=position,
+                )
+            )
 
 
 
@@ -178,6 +205,10 @@ class World:
 
         self.lava_cooling_rate = 0.98
 
+        # Lava damage factor controls how much damage lava does to infrastructure
+
+        self.lava_damage_factor = 100
+
         # Lava behaviour tuning
 
         self.lava_length_factor = 0.15
@@ -198,14 +229,22 @@ class World:
         self.lava_side_flow_strength = 0.2
 
 
+        # Ash behaviour tuning
 
         self.ash_settling_rate = 0.98
+
+        self.ash_damage_factor = 5
 
         self.ash_length_factor = 0.25
 
         self.ash_spread_factor = 0.15
 
-        
+
+        # earthquake behaviour tuning
+
+        self.earthquake_damage_distance_scale = 5
+
+        self.earthquake_damage_factor = 0.01
 
 
 
@@ -233,6 +272,8 @@ class World:
 
         self.eruptions = []
 
+        self.recent_eruptions = []
+
 
 
         #
@@ -252,6 +293,59 @@ class World:
         self.day = 0
 
 
+    def handle_structure_click(self, structure):
+
+
+        if structure is None:
+
+            return
+
+
+
+        #
+        # Always select structure
+        #
+
+        self.selected_structure = structure
+
+
+
+        #
+        # City selection phase
+        #
+
+        if self.game_state == GAME_STATES["CITY_SELECTION"]:
+
+
+            self.claim_city(structure)
+
+
+
+            #
+            # Check if all players have chosen
+            #
+
+            if self.current_player_index >= len(self.players):
+
+                self.game_state = GAME_STATES["PLAYING"]
+
+                print(
+                    "Starting game"
+                )
+
+
+    def get_current_player(self):
+
+
+        if self.current_player_index >= len(self.players):
+
+            return None
+
+
+        return self.players[
+            self.current_player_index
+        ]
+
 
     # =================================================
     # SIMULATION UPDATE
@@ -263,148 +357,187 @@ class World:
         self.day += 1
 
 
-        # 
+        #
         # Update wind
         #
+
         self.update_wind()
 
 
+
+        self.recent_earthquakes = []
+
+        self.recent_eruptions = []
+
+        eruption_occurred = False
+
+
+
         #
-        # Volcano evolution
+        # Update all volcanoes
         #
 
-        self.volcano.update_pressure()
+        for volcano in self.volcanoes:
+
+
+            #
+            # Volcano evolution
+            #
+
+            volcano.update_pressure()
 
 
 
-        earthquakes = self.volcano.generate_earthquakes()
+            earthquakes = volcano.generate_earthquakes()
 
 
 
-        self.volcano.update_fracture(
+            volcano.update_fracture(
 
-            earthquakes
+                earthquakes
 
+            )
+
+
+            #
+            # Store earthquakes
+            #
+
+            self.recent_earthquakes.extend(
+
+                earthquakes
+
+            )
+
+
+
+            #
+            # Check eruption
+            #
+
+            eruption = volcano.check_eruption()
+
+
+
+            if eruption:
+
+
+                eruption_occurred = True
+
+
+                eruption_event = {
+
+
+                    "day":
+
+                    self.day,
+
+
+                    "type":
+
+                    volcano.eruption_type,
+
+
+                    "location":
+
+                    volcano.eruption_location,
+
+
+                    "lava_intensity":
+
+                    volcano.lava_intensity,
+
+
+                    "ash_intensity":
+
+                    volcano.ash_intensity
+
+                }
+
+
+                self.recent_eruptions.append(
+                    eruption_event
+                )
+
+
+
+                #
+                # Create hazards
+                #
+
+                self.generate_ash_plume(
+
+                    eruption_event
+
+                )
+
+
+                self.generate_lava_flow(
+
+                    eruption_event
+
+                )
+
+
+
+                #
+                # Reset this volcano
+                #
+
+                volcano.release_pressure()
+
+
+
+                print(
+
+                    eruption_event["type"]
+
+                )
+
+        # 
+        # Store eruptions
+        # 
+
+        self.eruptions.extend(
+            self.recent_eruptions
         )
 
 
-
         #
-        # Store earthquakes
+        # Store earthquakes after all volcanoes update
         #
 
         self.earthquakes.extend(
 
-            earthquakes
+            self.recent_earthquakes
 
         )
 
 
-        self.recent_earthquakes = earthquakes
-
-
-
         #
         # Store history
+        # 
+        # (currently only tracks one volcano)
         #
 
         self.pressure_history.append(
 
-            self.volcano.pressure
+            [
+                volcano.pressure
+                for volcano in self.volcanoes
+            ]
 
         )
 
 
         self.fracture_history.append(
 
-            self.volcano.fracture
+            [
+                volcano.fracture
+                for volcano in self.volcanoes
+            ]
 
         )
-
-
-
-        #
-        # Check eruption
-        #
-
-        eruption = self.volcano.check_eruption()
-
-
-
-        if eruption:
-
-
-            eruption_event = {
-
-
-                "day":
-
-                self.day,
-
-
-                "type":
-
-                self.volcano.eruption_type,
-
-
-                "location":
-
-                self.volcano.eruption_location,
-
-
-                "lava_intensity":
-
-                self.volcano.lava_intensity,
-
-
-                "ash_intensity":
-
-                self.volcano.ash_intensity
-
-            }
-
-
-
-            self.eruptions.append(
-
-                eruption_event
-
-            )
-
-
-
-            #
-            # Create hazards
-            #
-
-            self.generate_ash_plume(
-
-                eruption_event
-
-            )
-
-
-            self.generate_lava_flow(
-
-                eruption_event
-
-            )
-
-
-
-            #
-            # Reset volcano
-            #
-
-            self.volcano.release_pressure()
-
-
-
-            print(
-
-                eruption_event["type"]
-
-            )
 
 
 
@@ -415,28 +548,19 @@ class World:
         self.update_infrastructure_damage()
 
 
+        # 
+        # Update economy
+        # 
+
+        self.update_economy()
+
 
         #
         # Reduce old hazards
         #
 
         self.update_hazards()
-
-
-
-        return {
-
-
-            "earthquakes":
-
-            earthquakes,
-
-
-            "eruption":
-
-            eruption
-
-        }
+        
 
     # =================================================
     # PLACE INFRASTRUCTURE
@@ -520,6 +644,208 @@ class World:
 
                     self.grid[gy][gx]["structure"] = structure
 
+
+    def generate_infrastructure(self):
+
+        cities = []
+
+        print("players", self.players)
+        for i in range(len(self.players)+1):
+
+            cities.append(
+                f"City {i+1}"
+            )
+        print("Generating cities:", cities)
+
+        for name in cities:
+
+            print("Placing city: {}".format(name))
+            x,y = self.find_settlement_location()
+            print("Settlement location: ({},{})".format(x,y))
+
+
+
+            city = Infrastructure(
+
+                name=name,
+
+                structure_type="city",
+
+                health=INFRASTRUCTURE_TYPES["city"]["health"],
+
+                colour=INFRASTRUCTURE_TYPES["city"]["colour"],
+
+                size=INFRASTRUCTURE_TYPES["city"]["size"]
+
+            )
+
+
+
+            self.place_infrastructure(
+
+                city,
+
+                x,
+
+                y
+
+            )
+
+
+    def add_player(self, player):
+
+        self.players.append(player)
+
+
+
+    def find_settlement_location(self):
+
+        water_cells = 0
+        mountain_cells = 0
+
+        max_attempts = 5000
+
+
+        for attempt in range(max_attempts):
+
+
+            x = random.randint(
+                0,
+                self.grid_width - 1
+            )
+
+
+            y = random.randint(
+                0,
+                self.grid_height - 1
+            )
+
+
+
+            #
+            # Check terrain
+            #
+
+            if self.terrain.is_water(
+                (
+                    x * self.terrain.cell_size,
+                    y * self.terrain.cell_size
+                )
+            ):
+                water_cells += 1
+                continue
+
+
+            if self.terrain.is_mountain(
+                (
+                    x * self.terrain.cell_size,
+                    y * self.terrain.cell_size
+                )
+            ):
+                mountain_cells += 1
+                continue
+
+
+
+            #
+            # Check existing infrastructure
+            #
+
+            occupied = False
+
+
+            for structure in self.infrastructure:
+
+
+                sx, sy = structure.position
+
+
+                if (
+                    abs(x - sx) < structure.size[0]
+                    and
+                    abs(y - sy) < structure.size[1]
+                ):
+
+                    occupied = True
+
+                    break
+
+
+
+            if occupied:
+
+                continue
+
+
+
+            return x, y
+
+
+        print("Water rejected:", water_cells)
+        print("Mountain rejected:", mountain_cells)
+
+        print(
+            "WARNING: Could not find valid settlement location"
+        )
+
+
+        return (
+            self.grid_width // 2,
+            self.grid_height // 2
+        )
+    
+
+    def claim_city(
+
+        self,
+
+        structure
+
+    ):
+
+
+        player = self.get_current_player()
+
+
+
+        if player is None:
+
+            return False
+
+
+
+        if structure.owner:
+
+            return False
+
+
+
+        structure.assign_owner(
+
+            player
+
+        )
+
+
+        player.city = structure
+
+        player.start_location = structure.position
+
+        player.income += INFRASTRUCTURE_TYPES[
+            structure.type
+        ]["income"]
+
+
+
+        #
+        # Move to next player
+        #
+
+        self.current_player_index += 1
+
+
+
+        return True
 
 
     # =================================================
@@ -1066,7 +1392,7 @@ class World:
 
                     )
 
-        # =================================================
+    # =================================================
     # UPDATE HAZARDS
     # =================================================
 
@@ -1189,8 +1515,6 @@ class World:
         )
 
 
-
-
     # =================================================
     # INFRASTRUCTURE DAMAGE
     # =================================================
@@ -1209,10 +1533,10 @@ class World:
 
 
 
-            x,y = structure.position
+            x, y = structure.position
 
 
-            width,height = structure.size
+            width, height = structure.size
 
 
 
@@ -1253,37 +1577,26 @@ class World:
 
 
 
-                    tile = self.grid[gy][gx]
-
-
-
                     #
-                    # Lava is much more damaging
+                    # Add hazard damage
                     #
 
-                    damage += (
+                    damage += self.get_lava_damage(
 
-                        tile["lava"]
-
-                        *
-
-                        100
+                        (gx, gy)
 
                     )
 
 
+                    damage += self.get_ash_damage(
 
-                    #
-                    # Ash damages more slowly
-                    #
+                        (gx, gy)
 
-                    damage += (
+                    )
 
-                        tile["ash"]
+                    damage += self.get_earthquake_damage(
 
-                        *
-
-                        5
+                        (gx, gy)
 
                     )
 
@@ -1299,6 +1612,190 @@ class World:
                 )
 
 
+
+
+    # =================================================
+    # HAZARD QUERY FUNCTIONS
+    # =================================================
+
+    def get_lava_damage(
+
+        self,
+
+        position
+
+    ):
+
+
+        gx, gy = position
+
+
+
+        if not (
+
+            0 <= gx < self.grid_width
+
+            and
+
+            0 <= gy < self.grid_height
+
+        ):
+
+            return 0
+
+
+
+        return (
+
+            self.grid[gy][gx]["lava"]
+
+            *
+
+            self.lava_damage_factor
+
+        )
+
+
+
+
+    def get_ash_damage(
+
+        self,
+
+        position
+
+    ):
+
+
+        gx, gy = position
+
+
+
+        if not (
+
+            0 <= gx < self.grid_width
+
+            and
+
+            0 <= gy < self.grid_height
+
+        ):
+
+            return 0
+
+
+
+        return (
+
+            self.grid[gy][gx]["ash"]
+
+            *
+
+            self.ash_damage_factor
+
+        )
+
+    def get_earthquake_damage(
+
+        self,
+
+        position
+
+    ):
+
+
+        gx, gy = position
+
+
+
+        if not (
+
+            0 <= gx < self.grid_width
+
+            and
+
+            0 <= gy < self.grid_height
+
+        ):
+
+            return 0
+
+
+
+        damage = 0
+
+
+
+        for earthquake in self.recent_earthquakes:
+
+
+            ex, ey = earthquake["location"]
+
+
+            #
+            # Convert earthquake world coordinates
+            # into grid coordinates
+            #
+
+            ex = int(
+                ex /
+                self.terrain.cell_size
+            )
+
+
+            ey = int(
+                ey /
+                self.terrain.cell_size
+            )
+
+
+
+            distance = self.distance(
+
+                (gx, gy),
+
+                (ex, ey)
+
+            )
+
+
+
+            magnitude = earthquake["magnitude"]
+
+
+
+            #
+            # Magnitude squared gives stronger
+            # effect from large earthquakes
+            #
+
+            damage += (
+
+                magnitude ** 2
+
+                *
+
+                math.exp(
+
+                    -distance / self.earthquake_damage_distance_scale
+
+                )
+
+                *
+
+                self.earthquake_damage_factor
+
+            )
+
+
+        return damage
+
+
+    def update_economy(self):
+
+        for player in self.players:
+
+            player.money += player.income
 
 
     # =================================================
@@ -1361,121 +1858,4 @@ class World:
         return directions[index]
 
 
-    # =================================================
-    # HAZARD QUERY FUNCTIONS
-    # =================================================
-
-    def get_lava_damage(
-
-        self,
-
-        position
-
-    ):
-
-
-        x,y = position
-
-
-
-        gx = int(
-
-            x /
-
-            self.terrain.cell_size
-
-        )
-
-
-        gy = int(
-
-            y /
-
-            self.terrain.cell_size
-
-        )
-
-
-
-        if not (
-
-            0 <= gx < self.grid_width
-
-            and
-
-            0 <= gy < self.grid_height
-
-        ):
-
-            return 0
-
-
-
-        return (
-
-            self.grid[gy][gx]["lava"]
-
-            *
-
-            100
-
-        )
-
-
-
-
-    def get_ash_damage(
-
-        self,
-
-        position
-
-    ):
-
-
-        x,y = position
-
-
-
-        gx = int(
-
-            x /
-
-            self.terrain.cell_size
-
-        )
-
-
-        gy = int(
-
-            y /
-
-            self.terrain.cell_size
-
-        )
-
-
-
-        if not (
-
-            0 <= gx < self.grid_width
-
-            and
-
-            0 <= gy < self.grid_height
-
-        ):
-
-            return 0
-
-
-
-        return (
-
-            self.grid[gy][gx]["ash"]
-
-            *
-
-            5
-
-        )
+    
