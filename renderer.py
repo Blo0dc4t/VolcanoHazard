@@ -633,8 +633,6 @@ class Renderer:
                             rect
                         )
 
-                    if structure.type == "city":
-
                         self.draw_health_text(
                             screen,
                             structure,

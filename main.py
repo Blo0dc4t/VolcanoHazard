@@ -124,6 +124,36 @@ while running:
 
                     )
 
+            if event.key == pygame.K_LEFT:
+
+                world.current_player_index = (
+                    (world.current_player_index - 1) %
+                    len(world.players)
+                )
+
+                print(
+
+                    "Current player:",
+
+                    world.get_current_player().name
+
+                )
+
+            if event.key == pygame.K_RIGHT:
+
+                world.current_player_index = (
+                    (world.current_player_index + 1) %
+                    len(world.players)
+                )
+
+                print(
+
+                    "Current player:",
+
+                    world.get_current_player().name
+
+                )
+
             #
             # Pause / resume
             #
@@ -131,8 +161,8 @@ while running:
             if event.key == pygame.K_RETURN:
 
                 if (
-                    world.game_state ==
-                    GAME_STATES["PAUSED"]
+                    world.game_state in
+                    [GAME_STATES["PAUSED"], GAME_STATES["BUILDING_PLACEMENT"]]
                 ):
 
                     world.game_state = (

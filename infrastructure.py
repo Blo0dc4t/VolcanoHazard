@@ -87,6 +87,49 @@ INFRASTRUCTURE_TYPES = {
 
 
 
+    "seismometer": {
+    
+    
+            "health":20,
+    
+    
+            "colour":(
+    
+                255,
+    
+                255,
+    
+                0
+    
+            ),
+    
+    
+            "size":(
+    
+                1,
+    
+                1
+    
+            ),
+    
+            "income": 1,
+    
+            "build_cost": 50,
+    
+            "repair_cost": 1,
+    
+            "destroyed_repair_multiplier": 1.5,
+    
+            "earthquake_detection_radius": 10,
+    
+            "allowed_terrain": [],
+    
+            "blocked_terrain": ["mountains", "water"]
+    
+        },
+
+
+
     "road": {
 
 
@@ -106,7 +149,7 @@ INFRASTRUCTURE_TYPES = {
 
         "size":(
 
-            10,
+            2,
 
             1
 
@@ -114,7 +157,7 @@ INFRASTRUCTURE_TYPES = {
 
         "income": -0.1,
 
-        "build_cost": 10,
+        "build_cost": 1,
 
         "repair_cost": 1,
 
