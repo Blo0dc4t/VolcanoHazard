@@ -1,3 +1,4 @@
+import copy
 import random
 import math
 
@@ -5,7 +6,7 @@ from volcano import Volcano
 from terrain import Terrain, TERRAIN_TYPES
 from infrastructure import Infrastructure, INFRASTRUCTURE_TYPES
 from player import Player
-from constants import GAME_STATES
+from constants import GAME_STATES, VOLCANO_DEFAULTS
 
 
 class World:
@@ -97,7 +98,7 @@ class World:
         #
 
         self.game_state = GAME_STATES[
-            "CITY_SELECTION"
+            "HOME"
         ]
 
         #
@@ -116,50 +117,10 @@ class World:
 
         for position in self.terrain.caldera_positions:
 
-            volcano = Volcano(
+            settings = self.get_volcano_parameters()
+            settings["caldera_position"] = position
 
-                caldera_position=position,
-
-                recharge_min=random.uniform(
-                    0.003,
-                    0.008
-                ),
-
-                recharge_max=random.uniform(
-                    0.008,
-                    0.015
-                ),
-
-                pressure_loss_max=random.uniform(
-                    0.005,
-                    0.015
-                ),
-
-                earthquake_multiplier=random.uniform(
-                    30,
-                    50
-                ),
-
-                earthquake_distance_scale=random.uniform(
-                    150,
-                    250
-                ),
-
-                fracture_damage_min=random.uniform(
-                    0.005,
-                    0.015
-                ),
-
-                fracture_damage_max=random.uniform(
-                    0.04,
-                    0.08
-                ),
-
-                fracture_healing=random.uniform(
-                    0.92,
-                    0.99
-                )
-            )
+            volcano = Volcano(**settings)
 
             self.volcanoes.append(volcano)
 
@@ -243,6 +204,39 @@ class World:
         #
 
         self.day = 0
+
+    # =================================================
+    # VOLCANO OPTIONS
+    # =================================================
+
+    def get_volcano_parameters(self):
+
+        settings = {}
+
+        for group in VOLCANO_DEFAULTS.values():
+            settings.update(group)
+
+        return settings
+
+    def apply_volcano_settings(self, settings_dict):
+
+        if settings_dict is None:
+            return
+
+        flat_settings = {}
+
+        first_value = next(iter(settings_dict.values()), None)
+
+        if isinstance(first_value, dict):
+            for group in settings_dict.values():
+                flat_settings.update(group)
+        else:
+            flat_settings = dict(settings_dict)
+
+        for volcano in self.volcanoes:
+            for key, value in flat_settings.items():
+                if hasattr(volcano, key):
+                    setattr(volcano, key, value)
 
     # =================================================
     # PLAYER

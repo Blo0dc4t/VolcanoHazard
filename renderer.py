@@ -2,7 +2,135 @@ import pygame
 
 from terrain import TERRAIN_TYPES
 from infrastructure import INFRASTRUCTURE_TYPES
-from constants import GAME_STATES
+from constants import GAME_STATES, VOLCANO_DEFAULTS
+
+
+class OptionTextField:
+    def __init__(self, label, value, x, y, width=220, height=32, default=None):
+        self.label = label
+        self.value = str(value)
+        self.default = default
+        self.rect = pygame.Rect(x, y, width, height)
+        self.active = False
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.active = self.rect.collidepoint(event.pos)
+        if not self.active:
+            return
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_BACKSPACE:
+                self.value = self.value[:-1]
+            elif event.key in (pygame.K_RETURN, pygame.K_TAB, pygame.K_ESCAPE):
+                self.active = False
+            elif event.unicode and event.unicode.isprintable():
+                self.value += event.unicode
+
+    def draw(self, screen, font):
+        label = font.render(self.label, True, (255, 255, 255))
+        screen.blit(label, (self.rect.x - 180, self.rect.y + 6))
+        colour = (80, 100, 130)
+        if self.active:
+            colour = (110, 140, 170)
+        pygame.draw.rect(screen, colour, self.rect, 2)
+        text = font.render(self.value, True, (255, 255, 255))
+        screen.blit(text, (self.rect.x + 8, self.rect.y + 6))
+
+    def parse_value(self):
+        if self.default is None:
+            return self.value
+        if isinstance(self.default, tuple):
+            raw = self.value.strip()
+            parts = [part.strip() for part in raw.split(",") if part.strip()]
+            if len(parts) == 2:
+                try:
+                    return (int(parts[0]), int(parts[1]))
+                except ValueError:
+                    pass
+            return self.default
+        if isinstance(self.default, int):
+            try:
+                return int(self.value)
+            except ValueError:
+                return self.default
+        if isinstance(self.default, float):
+            try:
+                return float(self.value)
+            except ValueError:
+                return self.default
+        return self.value
+
+
+class MenuRenderer:
+    def __init__(self, screen_width, screen_height):
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.option_tabs = list(VOLCANO_DEFAULTS.keys())
+        self.option_tab_index = 0
+        self.option_fields = self.build_option_fields()
+
+    def build_option_fields(self):
+        fields = {}
+        for tab_name in self.option_tabs:
+            group = VOLCANO_DEFAULTS[tab_name]
+            fields[tab_name] = []
+            for index, (name, value) in enumerate(group.items()):
+                fields[tab_name].append(
+                    OptionTextField(name, value, 260, 120 + index * 52, default=value)
+                )
+        return fields
+
+    def get_current_option_values(self):
+        values = {}
+        for tab_name in self.option_tabs:
+            values[tab_name] = {}
+            for field in self.option_fields[tab_name]:
+                values[tab_name][field.label] = field.parse_value()
+        return values
+
+    def draw_home_screen(self, screen, home_buttons):
+        surface = pygame.Surface((self.screen_width, self.screen_height))
+        for y in range(0, self.screen_height, 4):
+            for x in range(0, self.screen_width, 4):
+                value = (x * 0.15 + y * 0.10) % 1.0
+                if value < 0.35:
+                    colour = (25, 40, 50)
+                elif value < 0.6:
+                    colour = (40, 65, 45)
+                else:
+                    colour = (55, 80, 70)
+                pygame.draw.rect(surface, colour, (x, y, 4, 4))
+
+        screen.blit(surface, (0, 0))
+
+        title = pygame.font.SysFont(None, 72).render("Volcano Hazard", True, (255, 255, 255))
+        screen.blit(title, (self.screen_width // 2 - title.get_width() // 2, 80))
+
+        for label, rect in home_buttons.items():
+            pygame.draw.rect(screen, (80, 120, 180), rect, border_radius=12)
+            text = pygame.font.SysFont(None, 34).render(label, True, (255, 255, 255))
+            screen.blit(text, (rect.x + rect.width // 2 - text.get_width() // 2, rect.y + 18))
+
+    def draw_options_screen(self, screen):
+        screen.fill((15, 20, 25))
+
+        for index, tab_name in enumerate(self.option_tabs):
+            rect = pygame.Rect(50 + index * 190, 30, 180, 42)
+            colour = (110, 140, 180) if index == self.option_tab_index else (70, 90, 120)
+            pygame.draw.rect(screen, colour, rect, border_radius=8)
+            text = pygame.font.SysFont(None, 22).render(tab_name, True, (255, 255, 255))
+            screen.blit(text, (rect.x + 12, rect.y + 10))
+
+        active_tab = self.option_tabs[self.option_tab_index]
+        for field in self.option_fields[active_tab]:
+            field.draw(screen, pygame.font.SysFont(None, 24))
+
+        save_text = pygame.font.SysFont(None, 28).render(
+            "Press Enter to apply and return",
+            True,
+            (200, 200, 200),
+        )
+        screen.blit(save_text, (50, self.screen_height - 50))
 
 
 class Renderer:
