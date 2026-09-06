@@ -1,6 +1,7 @@
 import copy
 import random
 import math
+from collections import deque
 
 from volcano import Volcano
 from terrain import Terrain, TERRAIN_TYPES
@@ -93,6 +94,7 @@ class World:
         #
 
         self.build_structure_type = None
+        self.build_rotation = 0
 
         #
         # Multiplayer
@@ -268,6 +270,8 @@ class World:
 
         for volcano in self.volcanoes:
             for key, value in flat_settings.items():
+                if key == "caldera_position":
+                    continue
                 if hasattr(volcano, key):
                     setattr(volcano, key, value)
 
@@ -350,7 +354,8 @@ class World:
         self,
         structure_type,
         x,
-        y
+        y,
+        size=None
     ):
 
         data = INFRASTRUCTURE_TYPES.get(
@@ -370,7 +375,10 @@ class World:
         except (TypeError, ValueError):
             return False
 
-        width, height = data["size"]
+        if size is None:
+            size = data["size"]
+
+        width, height = size
 
         #
         # Map boundaries
@@ -456,7 +464,8 @@ class World:
         if not self.can_build(
             structure.type,
             x,
-            y
+            y,
+            structure.size
         ):
             return False
 
@@ -650,13 +659,7 @@ class World:
         player.start_location = structure.position
 
 
-        #
-        # Add income
-        #
-
-        player.income += INFRASTRUCTURE_TYPES[
-            structure.type
-        ]["income"]
+        self.recalculate_player_income()
 
 
         #
@@ -693,7 +696,8 @@ class World:
         self,
         structure_type,
         x,
-        y
+        y,
+        rotation=0
     ):
 
         player = self.get_current_player()
@@ -708,6 +712,11 @@ class World:
         if data is None:
             return False
 
+        width, height = data["size"]
+        if rotation % 2:
+            width, height = height, width
+        structure_size = (width, height)
+
         #
         # Building location
         #
@@ -715,7 +724,8 @@ class World:
         if not self.can_build(
             structure_type,
             x,
-            y
+            y,
+            structure_size
         ):
             return False
 
@@ -745,7 +755,7 @@ class World:
 
             colour=data["colour"],
 
-            size=data["size"]
+            size=structure_size
 
         )
 
@@ -774,14 +784,7 @@ class World:
 
         player.money -= cost
 
-        #
-        # Add income
-        #
-
-        player.income += data.get(
-            "income",
-            0
-        )
+        self.recalculate_player_income()
 
         return True
 
@@ -1609,7 +1612,99 @@ class World:
     # ECONOMY
     # =================================================
 
+    def get_structure_cells(self, structure):
+
+        x, y = structure.position
+        width, height = structure.size
+
+        return [
+            (cell_x, cell_y)
+            for cell_x in range(x, x + width)
+            for cell_y in range(y, y + height)
+        ]
+
+    def get_connected_structures(self, player):
+
+        if player is None or player.city is None:
+            return set()
+
+        connected = {player.city}
+        road_cells = set()
+        visited_cells = set()
+        cells_to_visit = deque(self.get_structure_cells(player.city))
+
+        while cells_to_visit:
+            cell_x, cell_y = cells_to_visit.popleft()
+
+            if (cell_x, cell_y) in visited_cells:
+                continue
+
+            visited_cells.add((cell_x, cell_y))
+
+            for neighbour_x, neighbour_y in (
+                (cell_x - 1, cell_y),
+                (cell_x + 1, cell_y),
+                (cell_x, cell_y - 1),
+                (cell_x, cell_y + 1),
+            ):
+                if not (
+                    0 <= neighbour_x < self.grid_width
+                    and 0 <= neighbour_y < self.grid_height
+                ):
+                    continue
+
+                structure = self.grid[neighbour_y][neighbour_x]["structure"]
+
+                if (
+                    structure is None
+                    or structure.owner is not player
+                    or structure.destroyed
+                    or structure.type != "road"
+                ):
+                    continue
+
+                connected.add(structure)
+
+                for road_cell in self.get_structure_cells(structure):
+                    if road_cell not in road_cells:
+                        road_cells.add(road_cell)
+                        cells_to_visit.append(road_cell)
+
+        for structure in self.infrastructure:
+            if (
+                structure.owner is not player
+                or structure.destroyed
+                or structure.type == "road"
+            ):
+                continue
+
+            for cell_x, cell_y in self.get_structure_cells(structure):
+                neighbours = (
+                    (cell_x - 1, cell_y),
+                    (cell_x + 1, cell_y),
+                    (cell_x, cell_y - 1),
+                    (cell_x, cell_y + 1),
+                )
+
+                if any(neighbour in road_cells for neighbour in neighbours):
+                    connected.add(structure)
+                    break
+
+        return connected
+
+    def recalculate_player_income(self):
+
+        for player in self.players:
+            connected_structures = self.get_connected_structures(player)
+            player.connected_structures = connected_structures
+            player.income = sum(
+                INFRASTRUCTURE_TYPES[structure.type].get("income", 0)
+                for structure in connected_structures
+            )
+
     def update_economy(self):
+
+        self.recalculate_player_income()
 
         for player in self.players:
 

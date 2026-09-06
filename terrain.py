@@ -1,63 +1,7 @@
 import random
 import noise
 import numpy as np
-
-
-TERRAIN_TYPES = {
-
-
-    "water": {
-
-        "level": 0.35,
-
-        "colour": (
-            40,
-            80,
-            180
-        )
-
-    },
-
-
-    "plains": {
-
-        "level": 0.75,
-
-        "colour": (
-            60,
-            170,
-            60
-        )
-
-    },
-
-
-    # "hills": {
-
-    #     "level": 0.75,
-
-    #     "colour": (
-    #         130,
-    #         100,
-    #         60
-    #     )
-
-    # },
-
-
-    "mountains": {
-
-        "level": 1.0,
-
-        "colour": (
-            180,
-            180,
-            180
-        )
-
-    }
-
-}
+from constants import TERRAIN_TYPES
 
 
 class Terrain:
@@ -356,6 +300,7 @@ class Terrain:
 
 
         candidates = []
+        fallback_candidates = []
 
 
 
@@ -414,15 +359,10 @@ class Terrain:
                 ]
 
 
-                if not all(
-
+                is_local_maximum = all(
                     height > neighbour
-
                     for neighbour in neighbours
-
-                ):
-
-                    continue
+                )
 
 
 
@@ -492,21 +432,31 @@ class Terrain:
 
 
 
-                candidates.append(
-
+                fallback_candidates.append(
                     (
                         height,
                         x,
                         y
                     )
-
                 )
+
+                if is_local_maximum:
+                    candidates.append(
+                        (
+                            height,
+                            x,
+                            y
+                        )
+                    )
 
 
 
         #
         # No suitable local maximum
         #
+
+        if not candidates:
+            candidates = fallback_candidates
 
         if not candidates:
 
@@ -518,15 +468,9 @@ class Terrain:
 
 
 
-        #
-        # Pick highest suitable
-        # local maximum
-        #
-
         candidates.sort(
             reverse=True
         )
-
 
         _, x, y = candidates[0]
 

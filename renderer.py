@@ -1,3 +1,5 @@
+import json
+
 import pygame
 
 from terrain import TERRAIN_TYPES
@@ -5,6 +7,8 @@ from infrastructure import INFRASTRUCTURE_TYPES
 from constants import (
     GAME_STATES,
     GENERAL_DEFAULTS,
+    INFRASTRUCTURE_TYPES,
+    TERRAIN_TYPES,
     VOLCANO_DEFAULTS,
     WORLD_DEFAULTS,
 )
@@ -13,7 +17,10 @@ from constants import (
 class OptionTextField:
     def __init__(self, label, value, x, y, width=220, height=32, default=None):
         self.label = label
-        self.value = str(value)
+        if isinstance(value, list):
+            self.value = json.dumps(value)
+        else:
+            self.value = str(value)
         self.default = default
         self.rect = pygame.Rect(x, y, width, height)
         self.active = False
@@ -44,6 +51,14 @@ class OptionTextField:
     def parse_value(self):
         if self.default is None:
             return self.value
+        if isinstance(self.default, list):
+            try:
+                parsed = json.loads(self.value)
+                if isinstance(parsed, list):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+            return self.default
         if isinstance(self.default, tuple):
             raw = self.value.strip()
             parts = [part.strip() for part in raw.split(",") if part.strip()]
@@ -76,6 +91,8 @@ class MenuRenderer:
             },
             "World defaults": WORLD_DEFAULTS,
             "Volcano defaults": VOLCANO_DEFAULTS,
+            "Infrastructure types": INFRASTRUCTURE_TYPES,
+            "Terrain types": TERRAIN_TYPES,
         }
         self.option_tabs = list(self.option_groups.keys())
         self.option_tab_index = 0
@@ -596,33 +613,44 @@ class Renderer:
         screen
     ):
 
-        for volcano in self.world.volcanoes:
+        for index, volcano in enumerate(self.world.volcanoes):
 
             x, y = volcano.caldera_position
+            screen_position = (
+                int(x * self.scale_x),
+                int(y * self.scale_y)
+            )
 
             pygame.draw.circle(
 
                 screen,
 
+                (255, 255, 255),
+                screen_position,
+                12
+            )
+
+            pygame.draw.circle(
+
+                screen,
+
+                (255, 0, 0),
+                screen_position,
+                8
+            )
+
+            label = self.small_font.render(
+                f"V{index + 1}",
+                True,
+                (255, 255, 255)
+            )
+
+            screen.blit(
+                label,
                 (
-                    255,
-                    0,
-                    0
-                ),
-
-                (
-                    int(
-                        x *
-                        self.scale_x
-                    ),
-
-                    int(
-                        y *
-                        self.scale_y
-                    )
-                ),
-
-                6
+                    screen_position[0] + 14,
+                    screen_position[1] - label.get_height() // 2
+                )
             )
 
     # =================================================
@@ -821,13 +849,25 @@ class Renderer:
 
                 drawn.add(structure)
 
-                colour = structure.colour
-
                 if structure.owner:
-
-                    colour = (
-                        structure.owner.colour
+                    border_colour = structure.owner.colour
+                    connected = (
+                        structure in structure.owner.connected_structures
                     )
+
+                    if connected:
+                        fill_colour = tuple(
+                            min(255, channel + (255 - channel) // 3)
+                            for channel in border_colour
+                        )
+                    else:
+                        fill_colour = tuple(
+                            max(35, channel // 3)
+                            for channel in border_colour
+                        )
+                else:
+                    border_colour = structure.colour
+                    fill_colour = structure.colour
 
                 sx, sy = structure.position
 
@@ -842,33 +882,32 @@ class Renderer:
 
                 pygame.draw.rect(
                     screen,
-                    colour,
+                    fill_colour,
+                    rect
+                )
+
+                pygame.draw.rect(
+                    screen,
+                    border_colour,
                     rect,
                     3
                 )
 
-                #
-                # Health
-                #
+                if structure.owner and structure.type in (
+                    "city",
+                    "town"
+                ):
+                    self.draw_health_bar(
+                        screen,
+                        structure,
+                        rect
+                    )
 
-                if structure.owner:
-
-                    if structure.type in (
-                        "city",
-                        "town"
-                    ):
-
-                        self.draw_health_bar(
-                            screen,
-                            structure,
-                            rect
-                        )
-
-                        self.draw_health_text(
-                            screen,
-                            structure,
-                            rect
-                        )
+                self.draw_health_text(
+                    screen,
+                    structure,
+                    rect
+                )
 
                 #
                 # City selection
@@ -946,10 +985,14 @@ class Renderer:
             "size"
         ]
 
+        if self.world.build_rotation % 2:
+            width, height = height, width
+
         valid = self.world.can_build(
             structure_type,
             grid_x,
-            grid_y
+            grid_y,
+            (width, height)
         )
 
         #
@@ -1131,28 +1174,33 @@ class Renderer:
         rect
     ):
 
-        text = self.small_font.render(
+        health_text = (
+            f"{int(structure.health)}/{int(structure.max_health)}"
+        )
+        font_size = min(18, max(8, rect.height - 4))
+        font = pygame.font.Font(None, font_size)
 
-            f"{int(structure.health)}/"
-            f"{int(structure.max_health)}",
-
-            True,
-
-            (
-                255,
-                255,
-                255
+        while (
+            font_size > 8
+            and (
+                font.size(health_text)[0] > rect.width - 4
+                or font.size(health_text)[1] > rect.height - 4
             )
+        ):
+            font_size -= 1
+            font = pygame.font.Font(None, font_size)
+
+        text = font.render(
+            health_text,
+            True,
+            (255, 255, 255)
         )
 
+        text_rect = text.get_rect(center=rect.center)
+
         screen.blit(
-
             text,
-
-            (
-                rect[0],
-                rect[1] - 30
-            )
+            text_rect
         )
 
     # =================================================

@@ -5,6 +5,8 @@ from renderer import Renderer, MenuRenderer
 from constants import (
     GAME_STATES,
     GENERAL_DEFAULTS,
+    INFRASTRUCTURE_TYPES,
+    TERRAIN_TYPES,
 )
 
 
@@ -38,6 +40,11 @@ def create_world(custom_settings=None):
 
     settings = custom_settings or menu_renderer.get_current_option_values()
     general = settings["General"]["General"]
+
+    INFRASTRUCTURE_TYPES.clear()
+    INFRASTRUCTURE_TYPES.update(settings["Infrastructure types"])
+    TERRAIN_TYPES.clear()
+    TERRAIN_TYPES.update(settings["Terrain types"])
 
     world = World(
         general["world_width"],
@@ -93,10 +100,17 @@ while running:
 
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                running = False
+                menu_state = "HOME"
+                world = None
+                renderer = None
+                day_timer = 0
+                continue
 
             if event.key == pygame.K_r:
-                if world.selected_structure:
+                if world.game_state == GAME_STATES["BUILDING_PLACEMENT"]:
+                    world.build_rotation = (world.build_rotation + 1) % 2
+                    print("Building rotation:", world.build_rotation * 90, "degrees")
+                elif world.selected_structure:
                     repaired = world.selected_structure.repair()
                     print(f"Repaired {world.selected_structure.name} for {repaired} HP")
 
@@ -120,10 +134,12 @@ while running:
                 if world.game_state in (GAME_STATES["PLAYING"], GAME_STATES["PAUSED"]):
                     world.game_state = GAME_STATES["BUILDING_PLACEMENT"]
                     world.build_structure_type = None
+                    world.build_rotation = 0
                     print("Building mode")
                 elif world.game_state == GAME_STATES["BUILDING_PLACEMENT"]:
                     world.game_state = GAME_STATES["PLAYING"]
                     world.build_structure_type = None
+                    world.build_rotation = 0
                     print("Building mode cancelled")
 
             if event.key >= pygame.K_1 and event.key <= pygame.K_9 and world.game_state == GAME_STATES["BUILDING_PLACEMENT"]:
@@ -141,7 +157,12 @@ while running:
                 if world.build_structure_type is None:
                     continue
                 grid_x, grid_y = renderer.screen_to_grid(*event.pos)
-                placed = world.build_structure(world.build_structure_type, grid_x, grid_y)
+                placed = world.build_structure(
+                    world.build_structure_type,
+                    grid_x,
+                    grid_y,
+                    world.build_rotation
+                )
                 if placed:
                     print(f"Placed {world.build_structure_type} at ({grid_x}, {grid_y})")
                 else:

@@ -39,3 +39,4 @@ class Player:
         # Income
         #
         self.income = 0
+        self.connected_structures = set()
