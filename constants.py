@@ -4,9 +4,30 @@ from pathlib import Path
 
 
 if getattr(sys, "frozen", False):
-    SETTINGS_PATH = Path(sys.executable).resolve().parent / "settings.json"
+    executable_directory = Path(sys.executable).resolve().parent
+    settings_candidates = [
+        executable_directory / "settings.json",
+        executable_directory / "_internal" / "settings.json",
+    ]
+
+    if getattr(sys, "_MEIPASS", None):
+        settings_candidates.append(
+            Path(sys._MEIPASS) / "settings.json"
+        )
 else:
-    SETTINGS_PATH = Path(__file__).resolve().parent / "settings.json"
+    settings_candidates = [
+        Path(__file__).resolve().parent / "settings.json"
+    ]
+
+
+SETTINGS_PATH = next(
+    (
+        path
+        for path in settings_candidates
+        if path.exists()
+    ),
+    settings_candidates[0]
+)
 
 
 with SETTINGS_PATH.open("r", encoding="utf-8") as settings_file:

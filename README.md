@@ -143,7 +143,7 @@ python -m pip install pyinstaller
 Build a folder-based executable:
 
 ```powershell
-python -m PyInstaller --name VolcanoHazard --windowed --onedir main.py
+python -m PyInstaller --clean --name VolcanoHazard --windowed --onedir --add-data "settings.json;." main.py
 ```
 
 The executable will be located at:
@@ -152,12 +152,12 @@ The executable will be located at:
 dist\VolcanoHazard\VolcanoHazard.exe
 ```
 
-Copy `settings.json` into `dist\VolcanoHazard` beside the executable. It remains external so it can be edited after packaging.
+The `--add-data "settings.json;."` option automatically includes `settings.json` in the packaged folder. Depending on the PyInstaller version, it may appear beside the executable or inside `dist\VolcanoHazard\_internal`. The game supports both locations. An external copy beside the executable takes priority, allowing settings to be edited after packaging.
 
-For a single executable, use:
+For a single executable, use the same approach if you do not need to edit the settings file after packaging:
 
 ```powershell
-python -m PyInstaller --name VolcanoHazard --windowed --onefile main.py
+python -m PyInstaller --clean --name VolcanoHazard --windowed --onefile --add-data "settings.json;." main.py
 ```
 
 The single-file executable will be located at:
@@ -166,10 +166,16 @@ The single-file executable will be located at:
 dist\VolcanoHazard.exe
 ```
 
-Copy `settings.json` beside `VolcanoHazard.exe` for the same reason.
+With `--onefile`, the settings file is bundled into the executable and extracted to a temporary folder when the game runs. Use the `--onedir` build if players need to edit `settings.json` after packaging.
 
 For troubleshooting, build without `--windowed` so Python errors remain visible in a console:
 
 ```powershell
 python -m PyInstaller --name VolcanoHazard main.py
+```
+
+For a console-enabled build that also includes the settings file:
+
+```powershell
+python -m PyInstaller --clean --name VolcanoHazard --add-data "settings.json;." main.py
 ```
