@@ -97,8 +97,54 @@ class MenuRenderer:
         self.option_tabs = list(self.option_groups.keys())
         self.option_tab_index = 0
         self.option_scroll_offset = 0
+        self.help_scroll_offset = 0
         self.option_fields = self.build_option_fields()
         self.option_section_rects = {}
+        self.help_sections = [
+            (
+                "Objective",
+                "Claim cities, survive volcanic hazards, and build a connected infrastructure network."
+            ),
+            (
+                "Keybinds",
+                "Left mouse: select, claim, or place. Enter: pause or resume. "
+                "B: enter or leave building mode. R: rotate while placing, "
+                "or repair the selected structure. 1-9: select a building. "
+                "Left and right arrows: switch players. Escape: return to the home menu."
+            ),
+            (
+                "Cities and Capitals",
+                "The first city you claim becomes your capital. Your capital is always active "
+                "and is the starting point for your road network."
+            ),
+            (
+                "Road Connectivity",
+                "Roads connect your capital to your other buildings. Connected cities, towns, "
+                "and seismometers provide their bonuses. Disconnected buildings are inactive "
+                "until a continuous path of your roads reaches them."
+            ),
+            (
+                "Buildings",
+                "Cities provide more income than towns. Roads connect your network but do not "
+                "provide income. Seismometers help detect earthquakes. Buildings can be rotated "
+                "while placing them."
+            ),
+            (
+                "Money and Income",
+                "Building and repairing costs money. Connected buildings provide income during "
+                "simulation updates. Destroyed or disconnected buildings do not provide income."
+            ),
+            (
+                "Volcanic Hazards",
+                "Volcanoes build pressure and fractures, causing earthquakes and eruptions. "
+                "Eruptions create lava and ash that can damage infrastructure."
+            ),
+            (
+                "Options",
+                "Before playing, use Options to change general, world, volcano, terrain, and "
+                "infrastructure settings. Press Enter to apply settings and return home."
+            ),
+        ]
 
     def build_option_fields(self):
         fields = {}
@@ -248,6 +294,79 @@ class MenuRenderer:
             (200, 200, 200),
         )
         screen.blit(save_text, (50, self.screen_height - 50))
+
+    def handle_help_event(self, event):
+        if event.type == pygame.MOUSEWHEEL:
+            content_height = len(self.help_sections) * 105
+            visible_height = self.screen_height - 150
+            max_scroll = max(0, content_height - visible_height)
+            self.help_scroll_offset = max(
+                0,
+                min(self.help_scroll_offset - event.y * 35, max_scroll)
+            )
+
+    def draw_help_screen(self, screen):
+        screen.fill((15, 20, 25))
+
+        title = pygame.font.SysFont(None, 48).render(
+            "How To Play",
+            True,
+            (255, 255, 255)
+        )
+        screen.blit(title, (50, 25))
+
+        content_rect = pygame.Rect(
+            35,
+            90,
+            self.screen_width - 70,
+            self.screen_height - 145
+        )
+        previous_clip = screen.get_clip()
+        screen.set_clip(content_rect)
+
+        heading_font = pygame.font.SysFont(None, 30)
+        body_font = pygame.font.SysFont(None, 23)
+        y = content_rect.y - self.help_scroll_offset
+
+        for heading, body in self.help_sections:
+            heading_surface = heading_font.render(
+                heading,
+                True,
+                (220, 180, 90)
+            )
+            screen.blit(heading_surface, (content_rect.x, y))
+            y += 36
+
+            words = body.split()
+            lines = []
+            current_line = ""
+            for word in words:
+                candidate = f"{current_line} {word}".strip()
+                if body_font.size(candidate)[0] > content_rect.width - 20:
+                    lines.append(current_line)
+                    current_line = word
+                else:
+                    current_line = candidate
+            if current_line:
+                lines.append(current_line)
+
+            for line in lines:
+                screen.blit(
+                    body_font.render(line, True, (230, 230, 230)),
+                    (content_rect.x + 12, y)
+                )
+                y += 27
+
+            y += 25
+
+        screen.set_clip(previous_clip)
+
+        footer = pygame.font.SysFont(None, 24).render(
+            "Scroll with the mouse wheel | Press Escape to return",
+            True,
+            (180, 180, 180)
+        )
+        screen.blit(footer, (50, self.screen_height - 42))
 
 
 class Renderer:

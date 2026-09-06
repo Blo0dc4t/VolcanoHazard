@@ -87,7 +87,7 @@ When a world is generated, the game begins in city-selection mode. Click a city 
 | `R` | Rotate the building in placement mode; repair the selected structure otherwise |
 | Left arrow | Switch to the previous player |
 | Right arrow | Switch to the next player |
-| `Escape` | Quit the game |
+| `Escape` | Return to the home menu |
 
 ### Building
 

@@ -32,7 +32,8 @@ simulation_speed = GENERAL_DEFAULTS["General"]["simulation_speed"]
 home_buttons = {
     "Play": pygame.Rect(SCREEN_WIDTH // 2 - 110, 220, 220, 60),
     "Options": pygame.Rect(SCREEN_WIDTH // 2 - 110, 310, 220, 60),
-    "Quit": pygame.Rect(SCREEN_WIDTH // 2 - 110, 400, 220, 60),
+    "How To Play": pygame.Rect(SCREEN_WIDTH // 2 - 110, 400, 220, 60),
+    "Quit": pygame.Rect(SCREEN_WIDTH // 2 - 110, 490, 220, 60),
 }
 
 def create_world(custom_settings=None):
@@ -76,6 +77,8 @@ while running:
                             create_world(custom_settings)
                         elif label == "Options":
                             menu_state = "OPTIONS"
+                        elif label == "How To Play":
+                            menu_state = "HELP"
                         elif label == "Quit":
                             running = False
             continue
@@ -93,6 +96,14 @@ while running:
                 elif event.key == pygame.K_RETURN:
                     custom_settings = menu_renderer.get_current_option_values()
                     menu_state = "HOME"
+            continue
+
+        if menu_state == "HELP":
+            menu_renderer.handle_help_event(event)
+
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                menu_state = "HOME"
+                menu_renderer.help_scroll_offset = 0
             continue
 
         if world is None:
@@ -195,6 +206,8 @@ while running:
         menu_renderer.draw_home_screen(screen, home_buttons)
     elif menu_state == "OPTIONS":
         menu_renderer.draw_options_screen(screen)
+    elif menu_state == "HELP":
+        menu_renderer.draw_help_screen(screen)
     elif renderer is not None:
         renderer.draw(screen)
 
