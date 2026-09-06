@@ -4,10 +4,7 @@ from world import World
 from renderer import Renderer, MenuRenderer
 from constants import (
     GAME_STATES,
-    WORLD_WIDTH,
-    WORLD_HEIGHT,
-    SIDEBAR_FRACTION,
-    SIMULATION_SPEED,
+    GENERAL_DEFAULTS,
 )
 
 
@@ -26,7 +23,8 @@ menu_state = "HOME"
 world = None
 renderer = None
 menu_renderer = MenuRenderer(SCREEN_WIDTH, SCREEN_HEIGHT)
-custom_volcano_settings = None
+custom_settings = menu_renderer.get_current_option_values()
+simulation_speed = GENERAL_DEFAULTS["General"]["simulation_speed"]
 
 # Home screen buttons
 home_buttons = {
@@ -35,21 +33,21 @@ home_buttons = {
     "Quit": pygame.Rect(SCREEN_WIDTH // 2 - 110, 400, 220, 60),
 }
 
-# Tab rectangles for click detection
-def get_tab_rects():
-    rects = {}
-    for index, tab_name in enumerate(menu_renderer.option_tabs):
-        rects[index] = pygame.Rect(50 + index * 190, 30, 180, 42)
-    return rects
-
-
 def create_world(custom_settings=None):
-    global world, renderer, menu_state
-    world = World(WORLD_WIDTH, WORLD_HEIGHT)
-    if custom_settings is not None:
-        world.apply_volcano_settings(custom_settings)
+    global world, renderer, menu_state, simulation_speed
+
+    settings = custom_settings or menu_renderer.get_current_option_values()
+    general = settings["General"]["General"]
+
+    world = World(
+        general["world_width"],
+        general["world_height"],
+        settings["World defaults"],
+    )
+    world.apply_volcano_settings(settings["Volcano defaults"])
     world.game_state = GAME_STATES["CITY_SELECTION"]
-    renderer = Renderer(world, SIDEBAR_FRACTION)
+    renderer = Renderer(world, general["sidebar_fraction"])
+    simulation_speed = general["simulation_speed"]
     menu_state = "PLAYING"
 
 
@@ -68,7 +66,7 @@ while running:
                 for label, rect in home_buttons.items():
                     if rect.collidepoint(event.pos):
                         if label == "Play":
-                            create_world(custom_volcano_settings)
+                            create_world(custom_settings)
                         elif label == "Options":
                             menu_state = "OPTIONS"
                         elif label == "Quit":
@@ -76,15 +74,7 @@ while running:
             continue
 
         if menu_state == "OPTIONS":
-            active_tab = menu_renderer.option_tabs[menu_renderer.option_tab_index]
-            for field in menu_renderer.option_fields[active_tab]:
-                field.handle_event(event)
-
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                tab_rects = get_tab_rects()
-                for index, rect in tab_rects.items():
-                    if rect.collidepoint(event.pos):
-                        menu_renderer.option_tab_index = index
+            menu_renderer.handle_option_event(event)
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_RIGHT:
@@ -94,7 +84,7 @@ while running:
                 elif event.key == pygame.K_ESCAPE:
                     menu_state = "HOME"
                 elif event.key == pygame.K_RETURN:
-                    custom_volcano_settings = menu_renderer.get_current_option_values()
+                    custom_settings = menu_renderer.get_current_option_values()
                     menu_state = "HOME"
             continue
 
@@ -176,7 +166,7 @@ while running:
     if world is not None and world.game_state == GAME_STATES["PLAYING"]:
         day_timer += 1
         if day_timer >= 10:
-            for _ in range(SIMULATION_SPEED):
+            for _ in range(simulation_speed):
                 world.update()
             day_timer = 0
 

@@ -6,12 +6,31 @@ from volcano import Volcano
 from terrain import Terrain, TERRAIN_TYPES
 from infrastructure import Infrastructure, INFRASTRUCTURE_TYPES
 from player import Player
-from constants import GAME_STATES, VOLCANO_DEFAULTS
+from constants import (
+    GAME_STATES,
+    GENERAL_DEFAULTS,
+    VOLCANO_DEFAULTS,
+    WORLD_DEFAULTS,
+)
 
 
 class World:
 
-    def __init__(self, width=1000, height=1000):
+    def __init__(self, width=None, height=None, world_settings=None):
+
+        general_defaults = GENERAL_DEFAULTS["General"]
+
+        if width is None:
+            width = general_defaults["world_width"]
+        if height is None:
+            height = general_defaults["world_height"]
+
+        world_defaults = copy.deepcopy(WORLD_DEFAULTS)
+
+        if world_settings is not None:
+            for section_name, section_values in world_settings.items():
+                if section_name in world_defaults:
+                    world_defaults[section_name].update(section_values)
 
         #
         # World dimensions
@@ -26,11 +45,18 @@ class World:
 
         print("creating terrain...")
 
+        generation_defaults = world_defaults["World generation"]
+
         self.terrain = Terrain(
             width,
             height,
-            cell_size=25,
-            caldera_num=2
+            cell_size=generation_defaults["cell_size"],
+            scale=generation_defaults["noise_scale"],
+            octaves=generation_defaults["noise_octaves"],
+            persistence=generation_defaults["noise_persistence"],
+            lacunarity=generation_defaults["noise_lacunarity"],
+            caldera_num=generation_defaults["caldera_num"],
+            caldera_min_distance=generation_defaults["caldera_min_distance"]
         )
 
         self.grid_width = self.terrain.grid_width
@@ -129,51 +155,58 @@ class World:
         #
 
         self.wind_direction = random.uniform(
-            0,
-            2 * math.pi
+            world_defaults["Wind"]["wind_direction_min"],
+            world_defaults["Wind"]["wind_direction_max"]
         )
 
         self.wind_speed = random.uniform(
-            0.5,
-            2.0
+            world_defaults["Wind"]["wind_speed_min"],
+            world_defaults["Wind"]["wind_speed_max"]
         )
 
-        self.wind_change_rate = 0.05
-        self.wind_speed_change_rate = 0.05
+        self.wind_change_rate = world_defaults["Wind"]["wind_change_rate"]
+        self.wind_speed_change_rate = world_defaults["Wind"]["wind_speed_change_rate"]
 
         #
         # Hazard behaviour
         #
 
-        self.lava_cooling_rate = 0.9
-        self.lava_damage_factor = 100
+        self.lava_cooling_rate = world_defaults["Hazard behaviour"]["lava_cooling_rate"]
+        self.lava_damage_factor = world_defaults["Hazard behaviour"]["lava_damage_factor"]
 
         #
         # Lava behaviour
         #
 
-        self.lava_length_factor = 0.15
-        self.lava_spread_factor = 0.05
-        self.lava_max_spread_chance = 0.4
-        self.lava_momentum = 0.15
-        self.lava_randomness_factor = 0.15
-        self.lava_side_flow_strength = 0.2
+        lava_defaults = world_defaults["Lava behaviour"]
+        self.lava_length_factor = lava_defaults["lava_length_factor"]
+        self.lava_spread_factor = lava_defaults["lava_spread_factor"]
+        self.lava_max_spread_chance = lava_defaults["lava_max_spread_chance"]
+        self.lava_momentum = lava_defaults["lava_momentum"]
+        self.lava_randomness_factor = lava_defaults["lava_randomness_factor"]
+        self.lava_side_flow_strength = lava_defaults["lava_side_flow_strength"]
 
         #
         # Ash behaviour
         #
 
-        self.ash_settling_rate = 0.9
-        self.ash_damage_factor = 5
-        self.ash_length_factor = 0.25
-        self.ash_spread_factor = 0.15
+        ash_defaults = world_defaults["Ash behaviour"]
+        self.ash_settling_rate = ash_defaults["ash_settling_rate"]
+        self.ash_damage_factor = ash_defaults["ash_damage_factor"]
+        self.ash_length_factor = ash_defaults["ash_length_factor"]
+        self.ash_spread_factor = ash_defaults["ash_spread_factor"]
 
         #
         # Earthquake damage
         #
 
-        self.earthquake_damage_distance_scale = 5
-        self.earthquake_damage_factor = 0.01
+        earthquake_defaults = world_defaults["Earthquake damage"]
+        self.earthquake_damage_distance_scale = earthquake_defaults[
+            "earthquake_damage_distance_scale"
+        ]
+        self.earthquake_damage_factor = earthquake_defaults[
+            "earthquake_damage_factor"
+        ]
 
         #
         # Active hazards

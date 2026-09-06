@@ -2,7 +2,12 @@ import pygame
 
 from terrain import TERRAIN_TYPES
 from infrastructure import INFRASTRUCTURE_TYPES
-from constants import GAME_STATES, VOLCANO_DEFAULTS
+from constants import (
+    GAME_STATES,
+    GENERAL_DEFAULTS,
+    VOLCANO_DEFAULTS,
+    WORLD_DEFAULTS,
+)
 
 
 class OptionTextField:
@@ -28,7 +33,7 @@ class OptionTextField:
 
     def draw(self, screen, font):
         label = font.render(self.label, True, (255, 255, 255))
-        screen.blit(label, (self.rect.x - 180, self.rect.y + 6))
+        screen.blit(label, (self.rect.x - 350, self.rect.y + 6))
         colour = (80, 100, 130)
         if self.active:
             colour = (110, 140, 170)
@@ -65,28 +70,125 @@ class MenuRenderer:
     def __init__(self, screen_width, screen_height):
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.option_tabs = list(VOLCANO_DEFAULTS.keys())
+        self.option_groups = {
+            "General": {
+                "General": GENERAL_DEFAULTS["General"],
+            },
+            "World defaults": WORLD_DEFAULTS,
+            "Volcano defaults": VOLCANO_DEFAULTS,
+        }
+        self.option_tabs = list(self.option_groups.keys())
         self.option_tab_index = 0
+        self.option_scroll_offset = 0
         self.option_fields = self.build_option_fields()
+        self.option_section_rects = {}
 
     def build_option_fields(self):
         fields = {}
-        for tab_name in self.option_tabs:
-            group = VOLCANO_DEFAULTS[tab_name]
-            fields[tab_name] = []
-            for index, (name, value) in enumerate(group.items()):
-                fields[tab_name].append(
-                    OptionTextField(name, value, 260, 120 + index * 52, default=value)
-                )
+        for tab_name, sections in self.option_groups.items():
+            fields[tab_name] = {}
+            for section_name, group in sections.items():
+                fields[tab_name][section_name] = []
+                for name, value in group.items():
+                    fields[tab_name][section_name].append(
+                        OptionTextField(name, value, 500, 0, default=value)
+                    )
         return fields
 
     def get_current_option_values(self):
         values = {}
         for tab_name in self.option_tabs:
             values[tab_name] = {}
-            for field in self.option_fields[tab_name]:
-                values[tab_name][field.label] = field.parse_value()
+            for section_name, fields in self.option_fields[tab_name].items():
+                values[tab_name][section_name] = {}
+                for field in fields:
+                    values[tab_name][section_name][field.label] = field.parse_value()
         return values
+
+    def get_tab_rects(self):
+        return {
+            index: pygame.Rect(50 + index * 190, 30, 180, 42)
+            for index in range(len(self.option_tabs))
+        }
+
+    def handle_option_event(self, event):
+        active_tab = self.option_tabs[self.option_tab_index]
+
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            for index, rect in self.get_tab_rects().items():
+                if rect.collidepoint(event.pos):
+                    self.option_tab_index = index
+                    self.option_scroll_offset = 0
+                    return
+
+        if event.type == pygame.MOUSEWHEEL:
+            self.option_scroll_offset -= event.y * 35
+            self.option_scroll_offset = max(
+                0,
+                min(self.option_scroll_offset, self.get_max_scroll())
+            )
+            return
+
+        for fields in self.option_fields[active_tab].values():
+            for field in fields:
+                field.handle_event(event)
+
+    def get_max_scroll(self):
+        active_tab = self.option_tabs[self.option_tab_index]
+        content_height = 25
+
+        for fields in self.option_fields[active_tab].values():
+            content_height += 40 + len(fields) * 52 + 15
+
+        visible_height = self.screen_height - 190
+        return max(0, content_height - visible_height)
+
+    def draw_option_fields(self, screen):
+        active_tab = self.option_tabs[self.option_tab_index]
+        y = 105 - self.option_scroll_offset
+        self.option_section_rects = {}
+        field_font = pygame.font.SysFont(None, 24)
+        section_font = pygame.font.SysFont(None, 28)
+        content_rect = pygame.Rect(
+            0,
+            82,
+            self.screen_width,
+            self.screen_height - 140
+        )
+        previous_clip = screen.get_clip()
+        screen.set_clip(content_rect)
+
+        for section_name, fields in self.option_fields[active_tab].items():
+            section_text = section_font.render(section_name, True, (220, 180, 90))
+            screen.blit(section_text, (70, y))
+            y += 40
+            self.option_section_rects[section_name] = pygame.Rect(70, y - 40, 300, 32)
+
+            for field in fields:
+                field.rect.y = y
+                field.draw(screen, field_font)
+                y += 52
+
+            y += 15
+
+        screen.set_clip(previous_clip)
+
+        if self.get_max_scroll() > 0:
+            scrollbar_height = max(
+                30,
+                int(content_rect.height * content_rect.height /
+                    (content_rect.height + self.get_max_scroll()))
+            )
+            scrollbar_range = content_rect.height - scrollbar_height
+            scrollbar_y = content_rect.y + int(
+                scrollbar_range * self.option_scroll_offset / self.get_max_scroll()
+            )
+            pygame.draw.rect(
+                screen,
+                (110, 140, 180),
+                (self.screen_width - 18, scrollbar_y, 8, scrollbar_height),
+                border_radius=4
+            )
 
     def draw_home_screen(self, screen, home_buttons):
         surface = pygame.Surface((self.screen_width, self.screen_height))
@@ -115,15 +217,13 @@ class MenuRenderer:
         screen.fill((15, 20, 25))
 
         for index, tab_name in enumerate(self.option_tabs):
-            rect = pygame.Rect(50 + index * 190, 30, 180, 42)
+            rect = self.get_tab_rects()[index]
             colour = (110, 140, 180) if index == self.option_tab_index else (70, 90, 120)
             pygame.draw.rect(screen, colour, rect, border_radius=8)
             text = pygame.font.SysFont(None, 22).render(tab_name, True, (255, 255, 255))
             screen.blit(text, (rect.x + 12, rect.y + 10))
 
-        active_tab = self.option_tabs[self.option_tab_index]
-        for field in self.option_fields[active_tab]:
-            field.draw(screen, pygame.font.SysFont(None, 24))
+        self.draw_option_fields(screen)
 
         save_text = pygame.font.SysFont(None, 28).render(
             "Press Enter to apply and return",
@@ -138,7 +238,7 @@ class Renderer:
     def __init__(
         self,
         world,
-        sidebar_fraction=0.2
+        sidebar_fraction=None
     ):
 
         self.world = world
@@ -151,6 +251,9 @@ class Renderer:
         #
         # Sidebar
         #
+
+        if sidebar_fraction is None:
+            sidebar_fraction = GENERAL_DEFAULTS["General"]["sidebar_fraction"]
 
         self.sidebar_width = int(
             self.screen_width *

@@ -1,15 +1,80 @@
-WORLD_WIDTH = 1000
-
-WORLD_HEIGHT = 1000
-
-SIDEBAR_FRACTION = 0.2
+import math
 
 
-#
-# Simulation timing
-#
+GENERAL_DEFAULTS = {
 
-SIMULATION_SPEED = 1
+    "General": {
+
+        "world_width": 1000,
+        "world_height": 1000,
+        "sidebar_fraction": 0.2,
+        "simulation_speed": 1,
+
+    },
+
+}
+
+
+WORLD_DEFAULTS = {
+
+    "World generation": {
+
+        "cell_size": 25,
+        "noise_scale": 50,
+        "noise_octaves": 4,
+        "noise_persistence": 0.5,
+        "noise_lacunarity": 2.0,
+        "caldera_num": 2,
+        "caldera_min_distance": 10,
+
+    },
+
+    "Wind": {
+
+        "wind_direction_min": 0.0,
+        "wind_direction_max": 2 * math.pi,
+        "wind_speed_min": 0.5,
+        "wind_speed_max": 2.0,
+        "wind_change_rate": 0.05,
+        "wind_speed_change_rate": 0.05,
+
+    },
+
+    "Hazard behaviour": {
+
+        "lava_cooling_rate": 0.9,
+        "lava_damage_factor": 100,
+
+    },
+
+    "Lava behaviour": {
+
+        "lava_length_factor": 0.15,
+        "lava_spread_factor": 0.05,
+        "lava_max_spread_chance": 0.4,
+        "lava_momentum": 0.15,
+        "lava_randomness_factor": 0.15,
+        "lava_side_flow_strength": 0.2,
+
+    },
+
+    "Ash behaviour": {
+
+        "ash_settling_rate": 0.9,
+        "ash_damage_factor": 5,
+        "ash_length_factor": 0.25,
+        "ash_spread_factor": 0.15,
+
+    },
+
+    "Earthquake damage": {
+
+        "earthquake_damage_distance_scale": 5,
+        "earthquake_damage_factor": 0.01,
+
+    },
+
+}
 
 
 VOLCANO_DEFAULTS = {
